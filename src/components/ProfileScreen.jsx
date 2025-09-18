@@ -211,29 +211,19 @@ const ProfileScreen = () => {
     // Find the index of the clicked video in the current list
     const videoIndex = videosList.findIndex(v => v._id === videoId);
     
-    // Navigate to HomeScreen with the video list and starting index
-    // You can implement this navigation based on your routing solution
-    // For React Router, it might look like:
-    // navigate('/home', { 
-    //   state: { 
-    //     videos: videosList, 
-    //     startIndex: videoIndex >= 0 ? videoIndex : 0,
-    //     source: activeTab // 'videos', 'liked', or 'saved'
-    //   } 
-    // });
+    // Store video data in sessionStorage for HomeScreen to retrieve
+    const navigationData = {
+      videos: videosList,
+      startIndex: videoIndex >= 0 ? videoIndex : 0,
+      source: activeTab, // 'videos', 'liked', or 'saved'
+      timestamp: Date.now(),
+      fromProfile: true
+    };
     
-    // For now, we'll use a custom event or callback
-    if (window.navigateToVideoFeed) {
-      window.navigateToVideoFeed({
-        videos: videosList,
-        startIndex: videoIndex >= 0 ? videoIndex : 0,
-        source: activeTab
-      });
-    } else {
-      console.log(`Navigate to video feed with video: ${videoId} at index: ${videoIndex}`);
-      console.log('Video list:', videosList);
-      console.log('Source tab:', activeTab);
-    }
+    sessionStorage.setItem('profileVideoNavigation', JSON.stringify(navigationData));
+    
+    // Navigate to home page - it will detect the stored data and use it
+    window.location.href = '/';
   };
 
   const renderVideoGrid = (videos) => {

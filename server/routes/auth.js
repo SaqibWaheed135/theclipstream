@@ -190,4 +190,38 @@ router.post('/google', async (req, res) => {
   }
 });
 
+// GET /api/auth/getUsers
+router.get("/getUsers", async (req, res) => {
+  try {
+    const users = await User.find({}, "-password -__v"); 
+    // exclude password & __v
+
+    res.json({
+      success: true,
+      data: users,
+    });
+  } catch (err) {
+    console.error("Error fetching users:", err);
+    res.status(500).json({ msg: "Server error fetching users" });
+  }
+});
+
+// DELETE /api/auth/deleteUser/:id
+router.delete("/deleteUser/:id", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const deleted = await User.findByIdAndDelete(userId);
+
+    if (!deleted) {
+      return res.status(404).json({ msg: "User not found" });
+    }
+
+    res.json({ success: true, msg: "User deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting user:", err);
+    res.status(500).json({ msg: "Server error deleting user" });
+  }
+});
+
+
 module.exports = router;

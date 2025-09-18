@@ -16,6 +16,7 @@ import SearchScreen from "./components/SearchScreen";
 import UploadScreen from "./components/UploadScreen";
 import LiveScreen from "./components/LiveStream.jsx";
 import ProfileScreen from "./components/ProfileScreen";
+import LiveBrowse from "./pages/LiveBrowse.jsx";
 
 // Import Login and Signup pages
 import Login from "./pages/Login.jsx"
@@ -111,6 +112,7 @@ const App = () => {
           <Route path="/upload" element={<ProtectedRoute><UploadScreen /></ProtectedRoute>} />
           <Route path="/live" element={<ProtectedRoute><LiveScreen /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+          <Route path="/live-browse" element={<ProtectedRoute><LiveBrowse /></ProtectedRoute>} />
         </Routes>
       </main>
 

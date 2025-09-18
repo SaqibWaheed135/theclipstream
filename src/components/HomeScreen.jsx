@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Heart, MessageCircle, Share, Bookmark, Send, X } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Heart, MessageCircle, Share, Bookmark, Send, X, ArrowLeft } from "lucide-react";
 
 const HomeScreen = () => {
   const [currentVideo, setCurrentVideo] = useState(0);
@@ -10,123 +10,290 @@ const HomeScreen = () => {
   const [comments, setComments] = useState({});
   const [newComment, setNewComment] = useState("");
   const [commentLoading, setCommentLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  
+  // Profile navigation state
+  const [profileNavigation, setProfileNavigation] = useState(null);
+  
+  // Performance optimization refs
+  const videoRefs = useRef({});
+  const fetchingRef = useRef(false);
+  const retryTimeoutRef = useRef(null);
 
-  // ✅ Fetch videos from backend (with signed S3 GET URLs)
+  // Memoized API config
+  const API_CONFIG = useMemo(() => ({
+    baseUrl: 'http://localhost:5000/api',
+    getHeaders: () => {
+      const token = localStorage.getItem('token');
+      return {
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+        'Content-Type': 'application/json'
+      };
+    }
+  }), []);
+
+  // Get current user data
   useEffect(() => {
-    const fetchVideos = async () => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
       try {
-        const res = await fetch("http://localhost:5000/api/videos", {
-          credentials: "include",
+        setCurrentUser(JSON.parse(userData));
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+  }, []);
+
+  // Optimized fetch function with retry logic
+  const fetchWithRetry = useCallback(async (url, options = {}, retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            ...API_CONFIG.getHeaders(),
+            ...options.headers
+          }
         });
-
-        if (!res.ok) {
-          throw new Error(`Failed to fetch: ${res.status}`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
+        
+        return await response.json();
+      } catch (error) {
+        console.warn(`Attempt ${i + 1} failed:`, error.message);
+        if (i === retries - 1) throw error;
+        
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+      }
+    }
+  }, [API_CONFIG]);
 
-        const data = await res.json();
-        setVideos(data);
-      } catch (err) {
-        console.error("Error fetching videos:", err);
-      } finally {
+  // Check for profile navigation data on component mount
+  useEffect(() => {
+    const checkProfileNavigation = () => {
+      const storedData = sessionStorage.getItem('profileVideoNavigation');
+      if (storedData) {
+        try {
+          const data = JSON.parse(storedData);
+          // Check if data is recent (within 5 minutes)
+          if (Date.now() - data.timestamp < 5 * 60 * 1000) {
+            console.log('Loading videos from profile navigation');
+            setProfileNavigation(data);
+            setVideos(data.videos);
+            setCurrentVideo(data.startIndex);
+            setLoading(false);
+            // Clear the stored data
+            sessionStorage.removeItem('profileVideoNavigation');
+            return true;
+          }
+        } catch (error) {
+          console.error('Error parsing profile navigation data:', error);
+        }
+        // Clean up expired data
+        sessionStorage.removeItem('profileVideoNavigation');
+      }
+      return false;
+    };
+
+    // If we have profile navigation data, use it; otherwise fetch videos normally
+    if (!checkProfileNavigation()) {
+      fetchVideos();
+    }
+  }, []);
+
+  // Optimized video fetching with caching and error handling
+  const fetchVideos = useCallback(async () => {
+    if (fetchingRef.current) return;
+    
+    fetchingRef.current = true;
+    setLoading(true);
+
+    try {
+      // Check cache first
+      const cachedVideos = sessionStorage.getItem('cachedVideos');
+      const cacheTimestamp = sessionStorage.getItem('videoCacheTime');
+      const now = Date.now();
+      
+      // Use cache if it's less than 5 minutes old
+      if (cachedVideos && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 5 * 60 * 1000) {
+        console.log('Loading videos from cache');
+        const parsedVideos = JSON.parse(cachedVideos);
+        setVideos(parsedVideos);
         setLoading(false);
+        fetchingRef.current = false;
+        return;
+      }
+
+      console.log('Fetching fresh videos from API');
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos`);
+      
+      // Cache the results
+      sessionStorage.setItem('cachedVideos', JSON.stringify(data));
+      sessionStorage.setItem('videoCacheTime', now.toString());
+      
+      setVideos(data);
+      console.log(`Loaded ${data.length} videos successfully`);
+      
+    } catch (error) {
+      console.error("Failed to fetch videos:", error);
+      
+      // Try to use cached data as fallback
+      const cachedVideos = sessionStorage.getItem('cachedVideos');
+      if (cachedVideos) {
+        console.log('Using cached videos as fallback');
+        setVideos(JSON.parse(cachedVideos));
+      } else {
+        // Show error state or retry
+        setRetryTimeout();
+      }
+    } finally {
+      setLoading(false);
+      fetchingRef.current = false;
+    }
+  }, [API_CONFIG, fetchWithRetry]);
+
+  // Set retry timeout for failed requests
+  const setRetryTimeout = useCallback(() => {
+    if (retryTimeoutRef.current) return;
+    
+    retryTimeoutRef.current = setTimeout(() => {
+      console.log('Retrying video fetch...');
+      retryTimeoutRef.current = null;
+      fetchVideos();
+    }, 5000);
+  }, [fetchVideos]);
+
+  // Cleanup retry timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Optimized scroll handling with throttling
+  useEffect(() => {
+    if (profileNavigation) return; // Only add scroll listener for general feed
+    
+    let ticking = false;
+    
+    const handleScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          const scrollPosition = window.scrollY;
+          const windowHeight = window.innerHeight;
+          const newCurrentVideo = Math.round(scrollPosition / windowHeight);
+          
+          if (newCurrentVideo !== currentVideo && newCurrentVideo < videos.length && newCurrentVideo >= 0) {
+            setCurrentVideo(newCurrentVideo);
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
 
-    fetchVideos();
-  }, []);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [currentVideo, videos.length, profileNavigation]);
 
-  // Fetch comments for a specific video
-  const fetchComments = async (videoId) => {
+  // Optimized comment fetching with caching
+  const fetchComments = useCallback(async (videoId) => {
     if (comments[videoId]) return; // Already fetched
 
     try {
-      const token = localStorage.getItem('token');
-      const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`http://localhost:5000/api/videos/${videoId}/comments`, {
-        credentials: "include",
-        headers,
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        setComments(prev => ({
-          ...prev,
-          [videoId]: data
-        }));
-      }
-    } catch (err) {
-      console.error("Error fetching comments:", err);
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/comments`);
+      setComments(prev => ({
+        ...prev,
+        [videoId]: data
+      }));
+    } catch (error) {
+      console.error("Error fetching comments:", error);
     }
-  };
+  }, [comments, API_CONFIG, fetchWithRetry]);
 
-  // Handle like functionality
-  const handleLike = async (videoId) => {
+  // Optimized like handler with optimistic updates
+  const handleLike = useCallback(async (videoId) => {
+    // Optimistic update
+    const currentVideo = videos.find(v => v._id === videoId);
+    if (!currentVideo) return;
+    
+    const wasLiked = currentVideo.isLiked;
+    const newLikesCount = wasLiked 
+      ? (currentVideo.likesCount || 0) - 1 
+      : (currentVideo.likesCount || 0) + 1;
+
+    // Update UI immediately
+    setVideos(prev => prev.map(video => 
+      video._id === videoId 
+        ? { ...video, isLiked: !wasLiked, likesCount: newLikesCount }
+        : video
+    ));
+
     try {
-      // Get token from localStorage or wherever you store it
-      const token = localStorage.getItem('token'); // or however you store your JWT
-      
-      console.log('Token being sent:', token); // Debug log
-      
-      const res = await fetch(`http://localhost:5000/api/videos/${videoId}/like`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // Add authorization header
-        },
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/like`, {
+        method: "POST"
       });
-
-      console.log('Response status:', res.status); // Debug log
       
-      if (res.ok) {
-        const data = await res.json();
-        setVideos(prev => prev.map(video => 
-          video._id === videoId 
-            ? { ...video, likes: data.likes, isLiked: data.isLiked }
-            : video
-        ));
-      } else {
-        const errorData = await res.json();
-        console.error('Like error:', errorData);
-      }
-    } catch (err) {
-      console.error("Error liking video:", err);
+      // Update with server response
+      setVideos(prev => prev.map(video => 
+        video._id === videoId 
+          ? { ...video, likes: data.likes, isLiked: data.isLiked, likesCount: data.likesCount }
+          : video
+      ));
+    } catch (error) {
+      console.error("Error liking video:", error);
+      // Revert optimistic update on error
+      setVideos(prev => prev.map(video => 
+        video._id === videoId 
+          ? { ...video, isLiked: wasLiked, likesCount: currentVideo.likesCount }
+          : video
+      ));
     }
-  };
+  }, [videos, API_CONFIG, fetchWithRetry]);
 
-  // Handle save functionality
-  const handleSave = async (videoId) => {
+  // Optimized save handler with optimistic updates
+  const handleSave = useCallback(async (videoId) => {
+    const currentVideo = videos.find(v => v._id === videoId);
+    if (!currentVideo) return;
+    
+    const wasSaved = currentVideo.isSaved;
+
+    // Optimistic update
+    setVideos(prev => prev.map(video => 
+      video._id === videoId 
+        ? { ...video, isSaved: !wasSaved }
+        : video
+    ));
+
     try {
-      const token = localStorage.getItem('token');
-      
-      const res = await fetch(`http://localhost:5000/api/videos/${videoId}/save`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/save`, {
+        method: "POST"
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setVideos(prev => prev.map(video => 
-          video._id === videoId 
-            ? { ...video, isSaved: data.isSaved }
-            : video
-        ));
-      }
-    } catch (err) {
-      console.error("Error saving video:", err);
+      
+      // Update with server response
+      setVideos(prev => prev.map(video => 
+        video._id === videoId 
+          ? { ...video, isSaved: data.isSaved }
+          : video
+      ));
+    } catch (error) {
+      console.error("Error saving video:", error);
+      // Revert optimistic update on error
+      setVideos(prev => prev.map(video => 
+        video._id === videoId 
+          ? { ...video, isSaved: wasSaved }
+          : video
+      ));
     }
-  };
+  }, [videos, API_CONFIG, fetchWithRetry]);
 
   // Handle share functionality
-  const handleShare = async (video) => {
+  const handleShare = useCallback(async (video) => {
     const shareData = {
       title: video.title || 'Check out this video!',
       text: video.description || 'Amazing video content!',
@@ -137,115 +304,183 @@ const HomeScreen = () => {
       if (navigator.share) {
         await navigator.share(shareData);
       } else {
-        // Fallback: copy to clipboard
         await navigator.clipboard.writeText(shareData.url);
-        alert('Video link copied to clipboard!');
+        // You might want to show a toast notification here
+        console.log('Video link copied to clipboard!');
       }
-    } catch (err) {
-      console.error('Error sharing:', err);
-      // Fallback: copy to clipboard
+    } catch (error) {
+      console.error('Error sharing:', error);
       try {
         await navigator.clipboard.writeText(shareData.url);
-        alert('Video link copied to clipboard!');
+        console.log('Video link copied to clipboard!');
       } catch (clipboardErr) {
         console.error('Clipboard error:', clipboardErr);
       }
     }
-  };
+  }, []);
 
-  // Handle comment submission
-  const handleCommentSubmit = async (e) => {
+  // Optimized comment submission with better error handling
+  const handleCommentSubmit = useCallback(async (e) => {
     e.preventDefault();
-    if (!newComment.trim() || !activeVideoId || commentLoading) return;
+    if (!newComment.trim() || !activeVideoId || commentLoading || !currentUser) return;
 
+    const commentText = newComment.trim();
+    const tempId = `temp-${Date.now()}`;
+    
+    // Optimistic update - add comment immediately
+    const optimisticComment = {
+      _id: tempId,
+      text: commentText,
+      user: {
+        _id: currentUser._id,
+        username: currentUser.username,
+        avatar: currentUser.avatar
+      },
+      createdAt: new Date().toISOString()
+    };
+
+    setComments(prev => ({
+      ...prev,
+      [activeVideoId]: [optimisticComment, ...(prev[activeVideoId] || [])]
+    }));
+    
+    setNewComment("");
     setCommentLoading(true);
+
     try {
-      const token = localStorage.getItem('token');
-      
-      const res = await fetch(`http://localhost:5000/api/videos/${activeVideoId}/comments`, {
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${activeVideoId}/comments`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({ text: newComment.trim() }),
+        body: JSON.stringify({ text: commentText })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setComments(prev => ({
-          ...prev,
-          [activeVideoId]: [data, ...(prev[activeVideoId] || [])]
-        }));
-        setNewComment("");
-        
-        // Update comment count in videos
-        setVideos(prev => prev.map(video => 
-          video._id === activeVideoId 
-            ? { ...video, commentsCount: (video.commentsCount || 0) + 1 }
-            : video
-        ));
-      } else {
-        const errorData = await res.json();
-        console.error('Comment error:', errorData);
-      }
-    } catch (err) {
-      console.error("Error posting comment:", err);
+      // Replace optimistic comment with real one
+      setComments(prev => ({
+        ...prev,
+        [activeVideoId]: prev[activeVideoId].map(comment => 
+          comment._id === tempId ? data : comment
+        )
+      }));
+      
+      // Update video comment count
+      setVideos(prev => prev.map(video => 
+        video._id === activeVideoId 
+          ? { ...video, commentsCount: (video.commentsCount || 0) + 1 }
+          : video
+      ));
+    } catch (error) {
+      console.error("Error posting comment:", error);
+      // Remove optimistic comment on error
+      setComments(prev => ({
+        ...prev,
+        [activeVideoId]: prev[activeVideoId].filter(comment => comment._id !== tempId)
+      }));
     } finally {
       setCommentLoading(false);
     }
-  };
+  }, [newComment, activeVideoId, commentLoading, currentUser, API_CONFIG, fetchWithRetry]);
 
   // Open comment modal
-  const openCommentModal = (videoId) => {
+  const openCommentModal = useCallback((videoId) => {
     setActiveVideoId(videoId);
     setShowCommentModal(true);
     fetchComments(videoId);
-  };
+  }, [fetchComments]);
 
   // Close comment modal
-  const closeCommentModal = () => {
+  const closeCommentModal = useCallback(() => {
     setShowCommentModal(false);
     setActiveVideoId(null);
     setNewComment("");
-  };
+  }, []);
 
-  const VideoPlayer = ({ video, isActive }) => {
+  const handleBackToProfile = useCallback(() => {
+    window.location.href = '/profile';
+  }, []);
+
+  // Memoized VideoPlayer component for better performance
+  const VideoPlayer = React.memo(({ video, isActive, index }) => {
     const [isFollowing, setIsFollowing] = useState(false);
     
     const isLiked = video.isLiked || false;
     const isSaved = video.isSaved || false;
-    const likesCount = Array.isArray(video.likes) ? video.likes.length : (video.likes || 0);
+    const likesCount = video.likesCount || (Array.isArray(video.likes) ? video.likes.length : (video.likes || 0));
     const commentsCount = video.commentsCount || 0;
+
+    // Optimize video loading
+    const videoRef = useRef(null);
+    
+    useEffect(() => {
+      if (videoRef.current && isActive) {
+        videoRef.current.play().catch(e => console.warn('Video play failed:', e));
+      } else if (videoRef.current && !isActive) {
+        videoRef.current.pause();
+      }
+    }, [isActive]);
 
     return (
       <div className="relative h-screen w-full bg-black overflow-hidden snap-start snap-always">
         <video
+          ref={videoRef}
           className="absolute inset-0 w-full h-full object-cover"
           src={video?.url}
-          autoPlay={isActive}
           muted
           loop
           playsInline
-          preload="metadata"
+          preload={index <= currentVideo + 2 ? "metadata" : "none"}
+          poster={video?.thumbnail}
         />
 
         {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+        {/* Back Button (only shown when coming from profile) */}
+        {profileNavigation && (
+          <div className="absolute top-4 left-4 z-20">
+            <button
+              onClick={handleBackToProfile}
+              className="p-3 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 transition-all duration-200"
+            >
+              <ArrowLeft className="w-6 h-6 text-white" />
+            </button>
+          </div>
+        )}
+
+        {/* Source Indicator */}
+        {profileNavigation && (
+          <div className="absolute top-4 right-4 z-20">
+            <div className="px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm">
+              <span className="text-white text-sm font-medium capitalize">
+                {profileNavigation.source === 'videos' ? 'My Videos' : 
+                 profileNavigation.source === 'liked' ? 'Liked Videos' : 'Saved Videos'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Video Counter */}
+        {profileNavigation && (
+          <div className="absolute top-16 right-4 z-20">
+            <div className="px-2 py-1 rounded-full bg-black/40 backdrop-blur-sm">
+              <span className="text-white text-xs">
+                {index + 1} / {videos.length}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Right Side Actions */}
         <div className="absolute right-3 bottom-24 flex flex-col items-center space-y-6 z-10">
           {/* Profile Avatar */}
           <div className="relative">
             <img
-              src={video?.user?.avatar || "https://i.pravatar.cc/150?u=default"}
+              src={video?.user?.avatar || "https://ui-avatars.com/api/?name=User&background=random&color=fff&size=200"}
               alt={video?.user?.username || "user"}
               className="w-12 h-12 rounded-full border-2 border-white object-cover"
+              loading="lazy"
             />
             <button
               onClick={() => setIsFollowing(!isFollowing)}
-              className={`absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold ${
+              className={`absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold transition-colors ${
                 isFollowing ? "bg-gray-600" : "bg-red-500"
               }`}
             >
@@ -316,13 +551,15 @@ const HomeScreen = () => {
 
         {/* Bottom Content */}
         <div className="absolute bottom-4 left-4 right-20 text-white z-10">
-          <div className="space-y-2">
+          <div className="space-y-2 mb-[80px]">
             <div className="flex items-center space-x-2">
               <span className="font-bold text-lg">
                 @{video?.user?.username || "unknown"}
               </span>
               <span className="text-sm opacity-80">•</span>
-              <span className="text-sm opacity-80">2h ago</span>
+              <span className="text-sm opacity-80">
+                {video.createdAt ? new Date(video.createdAt).toLocaleDateString() : '2h ago'}
+              </span>
             </div>
             <p className="text-sm leading-tight pr-4">
               {video?.description || ""}
@@ -340,10 +577,10 @@ const HomeScreen = () => {
         </div>
       </div>
     );
-  };
+  });
 
-  // Comment Modal Component
-  const CommentModal = () => {
+  // Memoized Comment Modal Component
+  const CommentModal = React.memo(() => {
     const activeVideo = videos.find(v => v._id === activeVideoId);
     const videoComments = comments[activeVideoId] || [];
 
@@ -357,7 +594,7 @@ const HomeScreen = () => {
             </h3>
             <button
               onClick={closeCommentModal}
-              className="p-2 rounded-full hover:bg-gray-100"
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
             >
               <X className="w-5 h-5 text-gray-600" />
             </button>
@@ -375,9 +612,10 @@ const HomeScreen = () => {
               videoComments.map((comment, index) => (
                 <div key={comment._id || index} className="flex space-x-3">
                   <img
-                    src={comment.user?.avatar || "https://i.pravatar.cc/150?u=comment"}
+                    src={comment.user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=random&color=fff&size=200`}
                     alt={comment.user?.username || "user"}
                     className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    loading="lazy"
                   />
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
@@ -398,10 +636,10 @@ const HomeScreen = () => {
           </div>
 
           {/* Comment Input */}
-          <div className="p-4 border-t bg-gray-50">
+          <div className="p-4 border-t bg-gray-50 mb-[78px]">
             <div className="flex items-center space-x-3">
               <img
-                src="https://i.pravatar.cc/150?u=current-user"
+                src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.username || 'You')}&background=random&color=fff&size=200`}
                 alt="You"
                 className="w-8 h-8 rounded-full object-cover flex-shrink-0"
               />
@@ -417,15 +655,20 @@ const HomeScreen = () => {
                     }
                   }}
                   placeholder="Add a comment..."
-                  className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={commentLoading}
+                  maxLength={500}
                 />
                 <button
                   onClick={handleCommentSubmit}
                   disabled={!newComment.trim() || commentLoading}
                   className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded-full bg-blue-500 text-white disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-600 transition-colors"
                 >
-                  <Send className="w-4 h-4" />
+                  {commentLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                 </button>
               </div>
             </div>
@@ -433,14 +676,35 @@ const HomeScreen = () => {
         </div>
       </div>
     );
-  };
+  });
 
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-black text-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Loading videos...</p>
+          <p className="text-lg mb-2">Loading videos...</p>
+          <p className="text-sm text-gray-400">Optimizing your experience</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-black text-white">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <MessageCircle className="w-8 h-8 text-gray-400" />
+          </div>
+          <p className="text-lg mb-2">No videos available</p>
+          <p className="text-sm text-gray-400">Check back later for new content</p>
+          <button 
+            onClick={fetchVideos}
+            className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -453,6 +717,7 @@ const HomeScreen = () => {
           <VideoPlayer
             key={video._id}
             video={video}
+            index={index}
             isActive={index === currentVideo}
           />
         ))}
