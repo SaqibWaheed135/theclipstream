@@ -33,7 +33,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const API_BASE_URL = 'http://localhost:5000/api';
+  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -377,8 +377,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     try {
       const endpoint = type === 'everyone' 
-        ? `${API_BASE_URL}/messages/messages/${deleteModal.message._id}/everyone`
-        : `${API_BASE_URL}/messages/messages/${deleteModal.message._id}/me`;
+        ? `${API_BASE_URL}/messages/${deleteModal.message._id}/everyone`
+        : `${API_BASE_URL}/messages/${deleteModal.message._id}/me`;
 
       const response = await fetch(endpoint, {
         method: 'DELETE',

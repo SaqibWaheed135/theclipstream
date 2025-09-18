@@ -19,6 +19,7 @@ const HomeScreen = () => {
   const videoRefs = useRef({});
   const fetchingRef = useRef(false);
   const retryTimeoutRef = useRef(null);
+  const containerRef = useRef(null);
 
   // Memoized API config
   const API_CONFIG = useMemo(() => ({
@@ -175,6 +176,29 @@ const HomeScreen = () => {
     };
   }, []);
 
+  // Video play/pause management
+  const manageVideoPlayback = useCallback((newCurrentVideo) => {
+    // Pause all videos first
+    Object.values(videoRefs.current).forEach(videoElement => {
+      if (videoElement && !videoElement.paused) {
+        videoElement.pause();
+      }
+    });
+
+    // Play the current video
+    const currentVideoElement = videoRefs.current[newCurrentVideo];
+    if (currentVideoElement) {
+      currentVideoElement.currentTime = 0; // Reset to beginning
+      const playPromise = currentVideoElement.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.warn('Video play failed:', error);
+        });
+      }
+    }
+  }, []);
+
   // Optimized scroll handling with throttling
   useEffect(() => {
     if (profileNavigation) return; // Only add scroll listener for general feed
@@ -190,6 +214,7 @@ const HomeScreen = () => {
           
           if (newCurrentVideo !== currentVideo && newCurrentVideo < videos.length && newCurrentVideo >= 0) {
             setCurrentVideo(newCurrentVideo);
+            manageVideoPlayback(newCurrentVideo);
           }
           ticking = false;
         });
@@ -199,7 +224,16 @@ const HomeScreen = () => {
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [currentVideo, videos.length, profileNavigation]);
+  }, [currentVideo, videos.length, profileNavigation, manageVideoPlayback]);
+
+  // Auto-play first video when videos load
+  useEffect(() => {
+    if (videos.length > 0 && !loading) {
+      setTimeout(() => {
+        manageVideoPlayback(currentVideo);
+      }, 100);
+    }
+  }, [videos.length, loading, currentVideo, manageVideoPlayback]);
 
   // Optimized comment fetching with caching
   const fetchComments = useCallback(async (videoId) => {
@@ -406,28 +440,30 @@ const HomeScreen = () => {
     const likesCount = video.likesCount || (Array.isArray(video.likes) ? video.likes.length : (video.likes || 0));
     const commentsCount = video.commentsCount || 0;
 
-    // Optimize video loading
-    const videoRef = useRef(null);
-    
-    useEffect(() => {
-      if (videoRef.current && isActive) {
-        videoRef.current.play().catch(e => console.warn('Video play failed:', e));
-      } else if (videoRef.current && !isActive) {
-        videoRef.current.pause();
-      }
-    }, [isActive]);
-
     return (
       <div className="relative h-screen w-full bg-black overflow-hidden snap-start snap-always">
         <video
-          ref={videoRef}
+          ref={(el) => {
+            if (el) {
+              videoRefs.current[index] = el;
+            }
+          }}
           className="absolute inset-0 w-full h-full object-cover"
           src={video?.url}
           muted
           loop
           playsInline
-          preload={index <= currentVideo + 2 ? "metadata" : "none"}
+          preload="metadata"
           poster={video?.thumbnail}
+          onLoadedData={() => {
+            // Auto-play if this is the current video
+            if (isActive) {
+              const videoElement = videoRefs.current[index];
+              if (videoElement) {
+                videoElement.play().catch(e => console.warn('Video autoplay failed:', e));
+              }
+            }
+          }}
         />
 
         {/* Gradient Overlay */}
@@ -712,7 +748,7 @@ const HomeScreen = () => {
 
   return (
     <>
-      <div className="h-screen overflow-y-auto snap-y snap-mandatory scrollbar-hide">
+      <div ref={containerRef} className="h-screen overflow-y-auto snap-y snap-mandatory scrollbar-hide">
         {videos.map((video, index) => (
           <VideoPlayer
             key={video._id}
