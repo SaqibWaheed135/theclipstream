@@ -21,6 +21,7 @@ import LiveBrowse from "./pages/LiveBrowse.jsx";
 // Import Login and Signup pages
 import Login from "./pages/Login.jsx"
 import Signup from "./pages/SignUp.jsx"
+import MessagingScreen from "./components/MessagingScreen.jsx";
 
 const BottomNavigation = ({ currentScreen, navigate }) => {
   const navItems = [
@@ -112,8 +113,14 @@ const App = () => {
           <Route path="/upload" element={<ProtectedRoute><UploadScreen /></ProtectedRoute>} />
           <Route path="/live" element={<ProtectedRoute><LiveScreen /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+          <Route path="/profile/:userId" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+
+          <Route path="/messaging" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
+            <Route path="/messages/:conversationId" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
+
           <Route path="/live-browse" element={<ProtectedRoute><LiveBrowse /></ProtectedRoute>} />
         </Routes>
+      
       </main>
 
       {/* ✅ Show nav only when logged in */}

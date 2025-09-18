@@ -205,6 +205,25 @@ router.get("/getUsers", async (req, res) => {
     res.status(500).json({ msg: "Server error fetching users" });
   }
 });
+router.get("/searchUsers", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({ msg: "Search query must be at least 2 characters" });
+    }
+
+    const regex = new RegExp(q, "i"); // case-insensitive search
+
+    const users = await User.find({ username: { $regex: regex } }, "-password -__v")
+      .limit(20)
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: users });
+  } catch (err) {
+    console.error("Error searching users:", err);
+    res.status(500).json({ msg: "Server error searching users" });
+  }
+});
 
 // DELETE /api/auth/deleteUser/:id
 router.delete("/deleteUser/:id", async (req, res) => {

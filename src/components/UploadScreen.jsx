@@ -44,8 +44,7 @@ const UploadScreen = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // 🔥 Real upload to backend
- // 🔥 Real upload to backend
+  // 🔥 Reel upload to backend
 const handleUpload = async () => {
   if (!selectedFile || !description.trim()) {
     alert("Please select a video and add a description");

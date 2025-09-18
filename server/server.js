@@ -17,6 +17,8 @@ import authRoutes from "./routes/auth.js";
 import videoRoutes from './routes/videos.js';
 import liveRoutes from './routes/liveRoutes.js'; // New live streaming routes
 import adminRoutes from './routes/adminAuth.js'
+import followRoutes from './routes/followRoutes.js'
+import messageRoutes from './routes/messageRoutes.js';
 
 // Import Socket.IO setup
 import { initializeSocket } from './utils/socket.js';
@@ -76,9 +78,31 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Routes
 app.use("/api/auth", authRoutes);
 app.use('/api/videos', videoRoutes);
-app.use('/api/live', liveRoutes); // Add live streaming routes
+app.use('/api/live', liveRoutes); 
 app.use("/api/admin", adminRoutes);
+app.use('/api/follow', followRoutes); 
+app.use('/api/messages', messageRoutes);
 
+app.get('/api/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const User = (await import('./models/User.js')).default;
+    
+    const user = await User.findById(userId)
+      .select('-password -email') // Don't expose sensitive data
+      .populate('followers', 'username avatar')
+      .populate('following', 'username avatar');
+    
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -109,6 +133,26 @@ app.get('/api/live-stats', (req, res) => {
     }))
   });
 });
+
+// app.get('/api/live-stats', (req, res) => {
+//   const socketCount = io.engine.clientsCount;
+//   const rooms = Array.from(io.sockets.adapter.rooms.keys());
+//   const streamRooms = rooms.filter(room => room.startsWith('stream-'));
+//   const conversationRooms = rooms.filter(room => room.startsWith('conversation-'));
+//   const userRooms = rooms.filter(room => room.startsWith('user-'));
+  
+//   res.json({
+//     connectedUsers: socketCount,
+//     activeStreams: streamRooms.length,
+//     activeConversations: conversationRooms.length,
+//     onlineUsers: userRooms.length,
+//     totalRooms: rooms.length,
+//     streams: streamRooms.map(room => ({
+//       streamId: room.replace('stream-', ''),
+//       viewers: io.sockets.adapter.rooms.get(room)?.size || 0
+//     }))
+//   });
+// });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
