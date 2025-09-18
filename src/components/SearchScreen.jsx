@@ -9,7 +9,7 @@ const SearchScreen = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userFollowStatus, setUserFollowStatus] = useState({});
 
-  const API_BASE_URL = 'http://localhost:5000/api';
+  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
   const filters = ['Top', 'Users', 'Videos', 'Sounds', 'LIVE', 'Hashtags'];
 

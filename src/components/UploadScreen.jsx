@@ -59,7 +59,7 @@ const handleUpload = async () => {
 
     // 1. Ask backend for signed upload URL
     const { data } = await axios.post(
-      "http://localhost:5000/api/videos/signed-url",
+      "https://theclipstream-backend.onrender.com/api/videos/signed-url",
       {
         fileName: selectedFile.name,
         fileType: selectedFile.type,
@@ -84,7 +84,7 @@ const handleUpload = async () => {
 
     // 3. Save metadata to backend + MongoDB
     await axios.post(
-      "http://localhost:5000/api/videos/save",
+      "https://theclipstream-backend.onrender.com/api/videos/save",
       {
         description,
         hashtags,

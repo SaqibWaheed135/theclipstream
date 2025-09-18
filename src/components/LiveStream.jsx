@@ -25,7 +25,7 @@ const LiveScreen = () => {
 
   // Initialize socket connection
   useEffect(() => {
-    socketRef.current = io('http://localhost:5000', {
+    socketRef.current = io('https://theclipstream-backend.onrender.com', {
       withCredentials: true
     });
 
@@ -109,7 +109,7 @@ const LiveScreen = () => {
       
       // Create live stream on backend
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/live/create', {
+      const response = await fetch('https://theclipstream-backend.onrender.com/api/live/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -164,7 +164,7 @@ const LiveScreen = () => {
 
       if (streamId) {
         const token = localStorage.getItem('token');
-        await fetch(`http://localhost:5000/api/live/${streamId}/end`, {
+        await fetch(`https://theclipstream-backend.onrender.com/api/live/${streamId}/end`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`

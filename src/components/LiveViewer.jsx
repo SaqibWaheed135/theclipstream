@@ -27,7 +27,7 @@ const LiveViewer = () => {
         setIsLoading(true);
         
         // Fetch stream info
-        const response = await fetch(`http://localhost:5000/api/live/${streamId}`, {
+        const response = await fetch(`https://theclipstream-backend.onrender.com/api/live/${streamId}`, {
           credentials: 'include'
         });
 
@@ -40,7 +40,7 @@ const LiveViewer = () => {
 
         // Initialize socket
         const token = localStorage.getItem('token');
-        socketRef.current = io('http://localhost:5000', {
+        socketRef.current = io('https://theclipstream-backend.onrender.com', {
           withCredentials: true,
           auth: token ? { token } : {}
         });

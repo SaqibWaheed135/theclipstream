@@ -13,7 +13,7 @@ const LiveBrowse = () => {
     const fetchLiveStreams = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/live', {
+        const response = await fetch('https://theclipstream-backend.onrender.com/api/live', {
           credentials: 'include'
         });
 

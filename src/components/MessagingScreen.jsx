@@ -51,7 +51,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       return;
     }
 
-    socketRef.current = io('http://localhost:5000', {
+    socketRef.current = io('https://theclipstream-backend.onrender.com', {
       withCredentials: true,
       auth: { token }
     });

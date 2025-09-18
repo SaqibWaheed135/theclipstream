@@ -23,7 +23,7 @@ const HomeScreen = () => {
 
   // Memoized API config
   const API_CONFIG = useMemo(() => ({
-    baseUrl: 'http://localhost:5000/api',
+    baseUrl: 'https://theclipstream-backend.onrender.com/api',
     getHeaders: () => {
       const token = localStorage.getItem('token');
       return {
