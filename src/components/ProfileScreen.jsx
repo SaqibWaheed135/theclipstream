@@ -656,10 +656,7 @@ useEffect(() => {
                 <p className="font-bold text-lg">{user?.followers?.length || 0}</p>
                 <p className="text-gray-400 text-sm">Followers</p>
               </div>
-              <div className="text-center">
-                <p className="font-bold text-lg">{user?.totalLikes || 0}</p>
-                <p className="text-gray-400 text-sm">Likes</p>
-              </div>
+
               <div className="text-center">
                 <p className="font-bold text-lg text-yellow-400">{user?.points || 0}</p>
                 <p className="text-yellow-400 text-sm">Points</p>
