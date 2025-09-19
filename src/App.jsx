@@ -18,12 +18,13 @@ import LiveScreen from "./components/LiveStream.jsx";
 import ProfileScreen from "./components/ProfileScreen";
 import LiveBrowse from "./pages/LiveBrowse.jsx";
 import LiveViewer from './components/LiveViewer';
-
+import EditProfileScreen from "./components/EditProfileScreen.jsx";
 
 // Import Login and Signup pages
 import Login from "./pages/Login.jsx"
 import Signup from "./pages/SignUp.jsx"
 import MessagingScreen from "./components/MessagingScreen.jsx";
+import PointsRechargeScreen from "./components/PointsRechargeScreen.jsx";
 
 
 
@@ -112,6 +113,11 @@ const App = () => {
           <Route path="/live" element={<ProtectedRoute><LiveScreen /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
           <Route path="/profile/:userId" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+
+           <Route path="/edit-profile" element={<ProtectedRoute><EditProfileScreen /></ProtectedRoute>} />
+
+             <Route path="/recharge-points" element={<ProtectedRoute><PointsRechargeScreen /></ProtectedRoute>} />
+         
 
           <Route path="/messaging" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
           <Route path="/messages/:conversationId" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />

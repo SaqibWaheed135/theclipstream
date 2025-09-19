@@ -613,12 +613,12 @@ useEffect(() => {
               <Share className="w-5 h-5" />
             </button>
             {isOwnProfile && (
-              <button
-                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                onClick={() => console.log('Navigate to settings')}
-              >
-                <Settings className="w-5 h-5" />
-              </button>
+               <button
+                    onClick={()=>window.location.href = '/recharge-points'}
+                    className="flex-1 py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors"
+                  >
+                    Recharge Points
+                  </button>
             )}
           </div>
         </div>
@@ -668,7 +668,7 @@ useEffect(() => {
               {isOwnProfile ? (
                 <>
                   <button
-                    onClick={() => console.log('Navigate to edit profile')}
+                    onClick={()=>window.location.href = '/edit-profile'}
                     className="flex-1 py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors"
                   >
                     Edit Profile
