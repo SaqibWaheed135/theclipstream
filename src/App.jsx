@@ -17,6 +17,8 @@ import UploadScreen from "./components/UploadScreen";
 import LiveScreen from "./components/LiveStream.jsx";
 import ProfileScreen from "./components/ProfileScreen";
 import LiveBrowse from "./pages/LiveBrowse.jsx";
+import LiveViewer from './components/LiveViewer';
+
 
 // Import Login and Signup pages
 import Login from "./pages/Login.jsx"
@@ -119,6 +121,9 @@ const App = () => {
             <Route path="/messages/:conversationId" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
 
           <Route path="/live-browse" element={<ProtectedRoute><LiveBrowse /></ProtectedRoute>} />
+
+          <Route path="/live/:streamId" element={<LiveViewer />} />
+
         </Routes>
       
       </main>
