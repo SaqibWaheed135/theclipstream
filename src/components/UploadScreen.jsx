@@ -167,7 +167,12 @@ const UploadScreen = () => {
     try {
       const token = localStorage.getItem("token");
 
-      const { data } = await fetch("https://theclipstream-backend.onrender.com/api/videos/signed-url", {
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+
+      // Step 1: Get signed URL
+      const signedUrlResponse = await fetch("https://theclipstream-backend.onrender.com/api/videos/signed-url", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -177,23 +182,43 @@ const UploadScreen = () => {
           fileName: selectedFile.name,
           fileType: selectedFile.type,
         })
-      }).then(res => res.json());
+      });
 
-      const { uploadUrl, key } = data;
+      if (!signedUrlResponse.ok) {
+        const errorText = await signedUrlResponse.text();
+        console.error('Signed URL API error:', errorText);
+        throw new Error(`Failed to get upload URL: ${signedUrlResponse.status}`);
+      }
 
-      // Upload to Wasabi
+      const signedUrlData = await signedUrlResponse.json();
+      console.log('Signed URL response:', signedUrlData);
+
+      if (!signedUrlData.uploadUrl || !signedUrlData.key) {
+        console.error('Invalid response structure:', signedUrlData);
+        throw new Error("Invalid response from server - missing uploadUrl or key");
+      }
+
+      const { uploadUrl, key } = signedUrlData;
+      setUploadProgress(25);
+
+      // Step 2: Upload to Wasabi
       const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: selectedFile,
-        headers: { "Content-Type": selectedFile.type }
+        headers: { 
+          "Content-Type": selectedFile.type 
+        }
       });
 
-      if (!uploadResponse.ok) throw new Error('Upload failed');
+      if (!uploadResponse.ok) {
+        console.error('Wasabi upload error:', uploadResponse.status, uploadResponse.statusText);
+        throw new Error(`Upload to storage failed: ${uploadResponse.status}`);
+      }
 
-      setUploadProgress(80);
+      setUploadProgress(75);
 
-      // Save metadata
-      await fetch("https://theclipstream-backend.onrender.com/api/videos/save", {
+      // Step 3: Save metadata
+      const saveResponse = await fetch("https://theclipstream-backend.onrender.com/api/videos/save", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -209,6 +234,12 @@ const UploadScreen = () => {
         })
       });
 
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json();
+        console.error('Save metadata error:', errorData);
+        throw new Error(errorData.msg || `Failed to save video metadata: ${saveResponse.status}`);
+      }
+
       setUploadProgress(100);
       alert("✅ Video uploaded successfully!");
       
@@ -223,8 +254,8 @@ const UploadScreen = () => {
       setCurrentView('camera');
       
     } catch (err) {
-      console.error(err);
-      alert("❌ Upload failed");
+      console.error('Upload error:', err);
+      alert(`❌ Upload failed: ${err.message}`);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
