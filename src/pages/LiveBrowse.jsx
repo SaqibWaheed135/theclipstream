@@ -113,7 +113,7 @@ const LiveBrowse = () => {
               <span className="text-lg text-gray-400">({liveStreams.length})</span>
             </h1>
             <button
-              onClick={() => window.location.href = '/live/create'}
+              onClick={() => window.location.href = '/live'}
               className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-full font-semibold transition-colors"
             >
               Go Live
