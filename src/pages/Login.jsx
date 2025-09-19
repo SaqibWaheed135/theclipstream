@@ -62,12 +62,11 @@ export default function Login() {
       setGoogleLoading(false);
     }
   };
-  const GOOGLE_CLIENT_ID="210244794273-gao6j6o1nen2ka42lu7lci5pjd4lftik.apps.googleusercontent.com";
 
   // Initialize Google Sign-In
   useEffect(() => {
     const initializeGoogleSignIn = async () => {
-      if (GOOGLE_CLIENT_ID) {
+      if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
         console.warn("VITE_GOOGLE_CLIENT_ID not found in environment variables");
         return;
       }
@@ -78,7 +77,7 @@ export default function Login() {
         
         if (window.google && window.google.accounts) {
           window.google.accounts.id.initialize({
-            client_id: GOOGLE_CLIENT_ID,
+            client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
             callback: handleGoogleResponse,
             auto_select: false,
             cancel_on_tap_outside: true,
