@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Heart, MessageCircle, Share, Bookmark, Send, X, ArrowLeft } from "lucide-react";
+import { Heart, MessageCircle, Share, Bookmark, Send, X, ArrowLeft, Volume2, VolumeX } from "lucide-react";
 
 const HomeScreen = () => {
   const [currentVideo, setCurrentVideo] = useState(0);
@@ -11,6 +11,7 @@ const HomeScreen = () => {
   const [newComment, setNewComment] = useState("");
   const [commentLoading, setCommentLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isMuted, setIsMuted] = useState(true); // Global mute state
   
   // Profile navigation state
   const [profileNavigation, setProfileNavigation] = useState(null);
@@ -72,6 +73,51 @@ const HomeScreen = () => {
     }
   }, [API_CONFIG]);
 
+  // Mock data for demo purposes
+  const generateMockVideos = useCallback(() => {
+    return [
+      {
+        _id: '1',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        thumbnail: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400',
+        user: { _id: '1', username: 'johndoe', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150' },
+        description: 'Amazing nature documentary clip! 🌟 #nature #wildlife',
+        hashtags: ['#nature', '#wildlife', '#amazing'],
+        likesCount: 1234,
+        commentsCount: 56,
+        createdAt: new Date().toISOString(),
+        isLiked: false,
+        isSaved: false
+      },
+      {
+        _id: '2',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+        thumbnail: 'https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=400',
+        user: { _id: '2', username: 'janesmth', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150' },
+        description: 'Creative animation showcase ✨ Follow for more!',
+        hashtags: ['#animation', '#creative', '#art'],
+        likesCount: 2567,
+        commentsCount: 89,
+        createdAt: new Date(Date.now() - 3600000).toISOString(),
+        isLiked: true,
+        isSaved: false
+      },
+      {
+        _id: '3',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        thumbnail: 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=400',
+        user: { _id: '3', username: 'mikech', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
+        description: 'Epic action sequence! What do you think? 🔥',
+        hashtags: ['#action', '#epic', '#fire'],
+        likesCount: 3890,
+        commentsCount: 134,
+        createdAt: new Date(Date.now() - 7200000).toISOString(),
+        isLiked: false,
+        isSaved: true
+      }
+    ];
+  }, []);
+
   // Check for profile navigation data on component mount
   useEffect(() => {
     const checkProfileNavigation = () => {
@@ -129,14 +175,23 @@ const HomeScreen = () => {
       }
 
       console.log('Fetching fresh videos from API');
-      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos`);
       
-      // Cache the results
-      sessionStorage.setItem('cachedVideos', JSON.stringify(data));
-      sessionStorage.setItem('videoCacheTime', now.toString());
-      
-      setVideos(data);
-      console.log(`Loaded ${data.length} videos successfully`);
+      // Try to fetch from API, fallback to mock data for demo
+      try {
+        const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos`);
+        // Cache the results
+        sessionStorage.setItem('cachedVideos', JSON.stringify(data));
+        sessionStorage.setItem('videoCacheTime', now.toString());
+        setVideos(data);
+        console.log(`Loaded ${data.length} videos successfully`);
+      } catch (apiError) {
+        console.log('API not available, using mock data for demo');
+        const mockVideos = generateMockVideos();
+        setVideos(mockVideos);
+        // Cache mock data
+        sessionStorage.setItem('cachedVideos', JSON.stringify(mockVideos));
+        sessionStorage.setItem('videoCacheTime', now.toString());
+      }
       
     } catch (error) {
       console.error("Failed to fetch videos:", error);
@@ -147,14 +202,14 @@ const HomeScreen = () => {
         console.log('Using cached videos as fallback');
         setVideos(JSON.parse(cachedVideos));
       } else {
-        // Show error state or retry
-        setRetryTimeout();
+        // Use mock data as final fallback
+        setVideos(generateMockVideos());
       }
     } finally {
       setLoading(false);
       fetchingRef.current = false;
     }
-  }, [API_CONFIG, fetchWithRetry]);
+  }, [API_CONFIG, fetchWithRetry, generateMockVideos]);
 
   // Set retry timeout for failed requests
   const setRetryTimeout = useCallback(() => {
@@ -176,62 +231,107 @@ const HomeScreen = () => {
     };
   }, []);
 
-  // Video play/pause management
-  const manageVideoPlayback = useCallback((newCurrentVideo) => {
-    // Pause all videos first
-    Object.values(videoRefs.current).forEach(videoElement => {
-      if (videoElement && !videoElement.paused) {
-        videoElement.pause();
-      }
-    });
+  // Video play/pause management with improved logic
+const manageVideoPlayback = useCallback((newCurrentVideo) => {
+  console.log('Managing video playback for video:', newCurrentVideo);
 
-    // Play the current video
-    const currentVideoElement = videoRefs.current[newCurrentVideo];
-    if (currentVideoElement) {
-      currentVideoElement.currentTime = 0; // Reset to beginning
-      const playPromise = currentVideoElement.play();
-      
+  Object.entries(videoRefs.current).forEach(([index, videoElement]) => {
+    if (!videoElement) return;
+    if (parseInt(index) === newCurrentVideo) {
+      videoElement.muted = isMuted;
+      const playPromise = videoElement.play();
       if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.warn('Video play failed:', error);
+        playPromise.catch(err => {
+          console.warn("Autoplay failed:", err);
+          videoElement.muted = true;
+          setIsMuted(true);
+          videoElement.play().catch(e => console.error("Muted autoplay also failed:", e));
         });
       }
+    } else {
+      videoElement.pause();
     }
-  }, []);
+  });
+}, [isMuted]);
 
-  // Optimized scroll handling with throttling
-  useEffect(() => {
-    if (profileNavigation) return; // Only add scroll listener for general feed
-    
-    let ticking = false;
-    
-    const handleScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          const scrollPosition = window.scrollY;
-          const windowHeight = window.innerHeight;
-          const newCurrentVideo = Math.round(scrollPosition / windowHeight);
-          
-          if (newCurrentVideo !== currentVideo && newCurrentVideo < videos.length && newCurrentVideo >= 0) {
-            setCurrentVideo(newCurrentVideo);
-            manageVideoPlayback(newCurrentVideo);
-          }
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [currentVideo, videos.length, profileNavigation, manageVideoPlayback]);
+  // Handle mute/unmute functionality
+const toggleMute = useCallback(() => {
+  const newMutedState = !isMuted;
+  setIsMuted(newMutedState);
 
-  // Auto-play first video when videos load
+  // Apply to all loaded video elements
+  Object.values(videoRefs.current).forEach((videoElement) => {
+    if (videoElement) {
+      videoElement.muted = newMutedState;
+    }
+  });
+
+  console.log("Toggled mute:", newMutedState);
+}, [isMuted]);
+
+
+
+  // Optimized scroll handling with throttling and improved logic
+  // Optimized scroll handling using containerRef
+useEffect(() => {
+  if (profileNavigation) return; // Only add scroll listener for general feed
+
+  const container = containerRef.current;
+  if (!container) return;
+
+  let ticking = false;
+
+  const handleScroll = () => {
+    if (!ticking) {
+      requestAnimationFrame(() => {
+        const scrollPosition = container.scrollTop;  // FIXED
+        const windowHeight = window.innerHeight;
+        const newCurrentVideo = Math.round(scrollPosition / windowHeight);
+
+        if (
+          newCurrentVideo !== currentVideo &&
+          newCurrentVideo < videos.length &&
+          newCurrentVideo >= 0
+        ) {
+          console.log(
+            "Scroll detected, changing from video",
+            currentVideo,
+            "to",
+            newCurrentVideo
+          );
+          setCurrentVideo(newCurrentVideo);
+        }
+        ticking = false;
+      });
+      ticking = true;
+    }
+  };
+
+  container.addEventListener("scroll", handleScroll, { passive: true });
+  return () => container.removeEventListener("scroll", handleScroll);
+}, [currentVideo, videos.length, profileNavigation]);
+
+  // Auto-play management when currentVideo changes
   useEffect(() => {
     if (videos.length > 0 && !loading) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         manageVideoPlayback(currentVideo);
       }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [currentVideo, videos.length, loading, manageVideoPlayback]);
+
+  // Initial auto-play when videos first load
+  useEffect(() => {
+    if (videos.length > 0 && !loading && currentVideo === 0) {
+      const timer = setTimeout(() => {
+        console.log('Initial video load, starting playback');
+        manageVideoPlayback(0);
+      }, 500);
+      
+      return () => clearTimeout(timer);
     }
   }, [videos.length, loading, currentVideo, manageVideoPlayback]);
 
@@ -247,19 +347,24 @@ const HomeScreen = () => {
       }));
     } catch (error) {
       console.error("Error fetching comments:", error);
+      // Set empty comments for demo
+      setComments(prev => ({
+        ...prev,
+        [videoId]: []
+      }));
     }
   }, [comments, API_CONFIG, fetchWithRetry]);
 
   // Optimized like handler with optimistic updates
   const handleLike = useCallback(async (videoId) => {
     // Optimistic update
-    const currentVideo = videos.find(v => v._id === videoId);
-    if (!currentVideo) return;
+    const currentVideoData = videos.find(v => v._id === videoId);
+    if (!currentVideoData) return;
     
-    const wasLiked = currentVideo.isLiked;
+    const wasLiked = currentVideoData.isLiked;
     const newLikesCount = wasLiked 
-      ? (currentVideo.likesCount || 0) - 1 
-      : (currentVideo.likesCount || 0) + 1;
+      ? (currentVideoData.likesCount || 0) - 1 
+      : (currentVideoData.likesCount || 0) + 1;
 
     // Update UI immediately
     setVideos(prev => prev.map(video => 
@@ -281,21 +386,16 @@ const HomeScreen = () => {
       ));
     } catch (error) {
       console.error("Error liking video:", error);
-      // Revert optimistic update on error
-      setVideos(prev => prev.map(video => 
-        video._id === videoId 
-          ? { ...video, isLiked: wasLiked, likesCount: currentVideo.likesCount }
-          : video
-      ));
+      // For demo, keep the optimistic update
     }
   }, [videos, API_CONFIG, fetchWithRetry]);
 
   // Optimized save handler with optimistic updates
   const handleSave = useCallback(async (videoId) => {
-    const currentVideo = videos.find(v => v._id === videoId);
-    if (!currentVideo) return;
+    const currentVideoData = videos.find(v => v._id === videoId);
+    if (!currentVideoData) return;
     
-    const wasSaved = currentVideo.isSaved;
+    const wasSaved = currentVideoData.isSaved;
 
     // Optimistic update
     setVideos(prev => prev.map(video => 
@@ -317,12 +417,7 @@ const HomeScreen = () => {
       ));
     } catch (error) {
       console.error("Error saving video:", error);
-      // Revert optimistic update on error
-      setVideos(prev => prev.map(video => 
-        video._id === videoId 
-          ? { ...video, isSaved: wasSaved }
-          : video
-      ));
+      // For demo, keep the optimistic update
     }
   }, [videos, API_CONFIG, fetchWithRetry]);
 
@@ -339,7 +434,6 @@ const HomeScreen = () => {
         await navigator.share(shareData);
       } else {
         await navigator.clipboard.writeText(shareData.url);
-        // You might want to show a toast notification here
         console.log('Video link copied to clipboard!');
       }
     } catch (error) {
@@ -356,7 +450,7 @@ const HomeScreen = () => {
   // Optimized comment submission with better error handling
   const handleCommentSubmit = useCallback(async (e) => {
     e.preventDefault();
-    if (!newComment.trim() || !activeVideoId || commentLoading || !currentUser) return;
+    if (!newComment.trim() || !activeVideoId || commentLoading) return;
 
     const commentText = newComment.trim();
     const tempId = `temp-${Date.now()}`;
@@ -366,9 +460,9 @@ const HomeScreen = () => {
       _id: tempId,
       text: commentText,
       user: {
-        _id: currentUser._id,
-        username: currentUser.username,
-        avatar: currentUser.avatar
+        _id: currentUser?._id || 'demo',
+        username: currentUser?.username || 'You',
+        avatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150'
       },
       createdAt: new Date().toISOString()
     };
@@ -403,11 +497,12 @@ const HomeScreen = () => {
       ));
     } catch (error) {
       console.error("Error posting comment:", error);
-      // Remove optimistic comment on error
-      setComments(prev => ({
-        ...prev,
-        [activeVideoId]: prev[activeVideoId].filter(comment => comment._id !== tempId)
-      }));
+      // For demo, keep the optimistic comment
+      setVideos(prev => prev.map(video => 
+        video._id === activeVideoId 
+          ? { ...video, commentsCount: (video.commentsCount || 0) + 1 }
+          : video
+      ));
     } finally {
       setCommentLoading(false);
     }
@@ -441,29 +536,44 @@ const HomeScreen = () => {
     const commentsCount = video.commentsCount || 0;
 
     return (
-      <div className="relative h-screen w-full bg-black overflow-hidden snap-start snap-always">
+      <div className="relative h-screen w-full bg-black overflow-hidden snap-start flex-shrink-0">
+
         <video
           ref={(el) => {
             if (el) {
               videoRefs.current[index] = el;
+              console.log('Video ref set for index:', index);
             }
           }}
           className="absolute inset-0 w-full h-full object-cover"
           src={video?.url}
-          muted
+         // muted={isMuted}
           loop
           playsInline
           preload="metadata"
           poster={video?.thumbnail}
-          onLoadedData={() => {
-            // Auto-play if this is the current video
-            if (isActive) {
-              const videoElement = videoRefs.current[index];
-              if (videoElement) {
-                videoElement.play().catch(e => console.warn('Video autoplay failed:', e));
-              }
-            }
-          }}
+          // onLoadedData={() => {
+          //   console.log('Video loaded for index:', index, 'isActive:', isActive);
+          //   // Auto-play if this is the current video
+          //   if (isActive) {
+          //     const videoElement = videoRefs.current[index];
+          //     if (videoElement) {
+          //       videoElement.muted = isMuted;
+          //       setTimeout(() => {
+          //         videoElement.play().catch(e => {
+          //           console.warn('Video autoplay failed:', e);
+          //           // Try muted autoplay
+          //           videoElement.muted = true;
+          //           setIsMuted(true);
+          //           videoElement.play().catch(err => console.error('Muted autoplay failed:', err));
+          //         });
+          //       }, 100);
+          //     }
+          //   }
+          // }}
+          onPlay={() => console.log('Video playing:', index)}
+          onPause={() => console.log('Video paused:', index)}
+          onError={(e) => console.error('Video error:', e)}
         />
 
         {/* Gradient Overlay */}
@@ -504,12 +614,26 @@ const HomeScreen = () => {
           </div>
         )}
 
+        {/* Mute/Unmute Button */}
+        <div className="absolute top-4 left-4 z-20">
+          <button
+            onClick={toggleMute}
+            className="p-3 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 transition-all duration-200"
+          >
+            {isMuted ? (
+              <VolumeX className="w-6 h-6 text-white" />
+            ) : (
+              <Volume2 className="w-6 h-6 text-white" />
+            )}
+          </button>
+        </div>
+
         {/* Right Side Actions */}
         <div className="absolute right-3 bottom-24 flex flex-col items-center space-y-6 z-10">
           {/* Profile Avatar */}
           <div className="relative">
             <img
-              src={video?.user?.avatar || "https://ui-avatars.com/api/?name=User&background=random&color=fff&size=200"}
+              src={video?.user?.avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150"}
               alt={video?.user?.username || "user"}
               className="w-12 h-12 rounded-full border-2 border-white object-cover"
               loading="lazy"
