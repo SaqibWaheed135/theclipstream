@@ -9,7 +9,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
   const [loading, setLoading] = useState(true);
   const [videoLoading, setVideoLoading] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
-  
+
   // Follow system states
   const [followStatus, setFollowStatus] = useState({
     isFollowing: false,
@@ -19,11 +19,11 @@ const ProfileScreen = ({ userId: propUserId }) => {
     targetUserIsPrivate: false,
     relationship: 'none'
   });
-  
+
   // Follow requests states
   const [followRequests, setFollowRequests] = useState([]);
   const [showFollowRequests, setShowFollowRequests] = useState(false);
-  
+
   // Video data states
   const [userVideos, setUserVideos] = useState([]);
   const [likedVideos, setLikedVideos] = useState([]);
@@ -47,7 +47,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
       const response = await fetch(`${API_BASE_URL}/follow/status/${targetUserId}`, {
         headers: getAuthHeaders()
       });
-      
+
       if (response.ok) {
         const status = await response.json();
         setFollowStatus(status);
@@ -63,7 +63,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
       const response = await fetch(`${API_BASE_URL}/follow/requests`, {
         headers: getAuthHeaders()
       });
-      
+
       if (response.ok) {
         const requests = await response.json();
         setFollowRequests(requests);
@@ -74,57 +74,70 @@ const ProfileScreen = ({ userId: propUserId }) => {
   };
 
   // Handle follow/unfollow
-  const handleFollowToggle = async () => {
-    if (followLoading) return;
-    
-    setFollowLoading(true);
-    try {
-      if (followStatus.isFollowing) {
-        // Unfollow
-        const response = await fetch(`${API_BASE_URL}/follow/unfollow/${user._id || user.id}`, {
-          method: 'POST',
-          headers: getAuthHeaders()
-        });
-        
-        if (response.ok) {
+ const handleFollowToggle = async () => {
+  if (followLoading || !user) return;
+  setFollowLoading(true);
+
+  try {
+    if (followStatus.isFollowing) {
+      // 🔴 Unfollow
+      const response = await fetch(`${API_BASE_URL}/follow/unfollow/${user._id || user.id}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        setFollowStatus(prev => ({
+          ...prev,
+          isFollowing: false,
+          canMessage: false,
+          relationship: prev.isFollowedBy ? 'follower' : 'none'
+        }));
+
+        // Update local state counts
+        setUser(prev => ({
+          ...prev,
+          followers: prev.followers?.filter(f => f !== currentUser._id) || []
+        }));
+      }
+    } else {
+      // 🟢 Follow
+      const response = await fetch(`${API_BASE_URL}/follow/request/${user._id || user.id}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+
+        if (result.requiresApproval) {
           setFollowStatus(prev => ({
             ...prev,
-            isFollowing: false,
-            canMessage: false,
-            relationship: prev.isFollowedBy ? 'follower' : 'none'
+            hasPendingRequest: true
+          }));
+        } else {
+          setFollowStatus(prev => ({
+            ...prev,
+            isFollowing: true,
+            canMessage: prev.isFollowedBy,
+            relationship: prev.isFollowedBy ? 'mutual' : 'following'
+          }));
+
+          // Update local state counts
+          setUser(prev => ({
+            ...prev,
+            followers: [...(prev.followers || []), currentUser._id]
           }));
         }
-      } else {
-        // Follow
-        const response = await fetch(`${API_BASE_URL}/follow/request/${user._id || user.id}`, {
-          method: 'POST',
-          headers: getAuthHeaders()
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          
-          if (result.requiresApproval) {
-            setFollowStatus(prev => ({
-              ...prev,
-              hasPendingRequest: true
-            }));
-          } else {
-            setFollowStatus(prev => ({
-              ...prev,
-              isFollowing: true,
-              canMessage: prev.isFollowedBy,
-              relationship: prev.isFollowedBy ? 'mutual' : 'following'
-            }));
-          }
-        }
       }
-    } catch (error) {
-      console.error('Error toggling follow:', error);
-    } finally {
-      setFollowLoading(false);
     }
-  };
+  } catch (error) {
+    console.error('Error toggling follow:', error);
+  } finally {
+    setFollowLoading(false);
+  }
+};
+
 
   // Handle follow request response
   const handleFollowRequest = async (requestId, action) => {
@@ -133,11 +146,11 @@ const ProfileScreen = ({ userId: propUserId }) => {
         method: 'POST',
         headers: getAuthHeaders()
       });
-      
+
       if (response.ok) {
         // Remove request from list
         setFollowRequests(prev => prev.filter(req => req._id !== requestId));
-        
+
         if (action === 'accept') {
           // Update user's follower count
           setUser(prev => ({
@@ -159,7 +172,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
         headers: getAuthHeaders(),
         body: JSON.stringify({ recipientId: user._id || user.id })
       });
-      
+
       if (response.ok) {
         const conversation = await response.json();
         // Navigate to messages with this conversation
@@ -180,7 +193,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
       const response = await fetch(`${API_BASE_URL}/users/${targetUserId}`, {
         headers: getAuthHeaders()
       });
-      
+
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
@@ -195,24 +208,24 @@ const ProfileScreen = ({ userId: propUserId }) => {
     try {
       setVideoLoading(true);
       let currentUserVideos = [];
-      
+
       try {
         const userVideosResponse = await fetch(`${API_BASE_URL}/videos/user/${user._id || user.id}`, {
           headers: getAuthHeaders()
         });
-        
+
         if (userVideosResponse.ok) {
           currentUserVideos = await userVideosResponse.json();
         }
       } catch (userVideoError) {
         console.log('User-specific endpoint not available, using fallback');
       }
-      
+
       if (currentUserVideos.length === 0) {
         const response = await fetch(`${API_BASE_URL}/videos`, {
           headers: getAuthHeaders()
         });
-        
+
         if (response.ok) {
           const allVideos = await response.json();
           currentUserVideos = allVideos.filter(video => {
@@ -222,7 +235,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
           });
         }
       }
-      
+
       setUserVideos(currentUserVideos);
     } catch (error) {
       console.error('Error fetching user videos:', error);
@@ -234,12 +247,12 @@ const ProfileScreen = ({ userId: propUserId }) => {
   const fetchLikedVideos = async () => {
     try {
       setVideoLoading(true);
-      
+
       try {
         const response = await fetch(`${API_BASE_URL}/videos/liked`, {
           headers: getAuthHeaders()
         });
-        
+
         if (response.ok) {
           const likedVideosData = await response.json();
           setLikedVideos(likedVideosData);
@@ -252,7 +265,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
       const response = await fetch(`${API_BASE_URL}/videos`, {
         headers: getAuthHeaders()
       });
-      
+
       if (response.ok) {
         const allVideos = await response.json();
         const likedByUser = allVideos.filter(video => video.isLiked === true);
@@ -271,7 +284,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
       const response = await fetch(`${API_BASE_URL}/videos/saved`, {
         headers: getAuthHeaders()
       });
-      
+
       if (response.ok) {
         const savedVideosData = await response.json();
         setSavedVideos(savedVideosData);
@@ -284,29 +297,31 @@ const ProfileScreen = ({ userId: propUserId }) => {
   };
 
   // Initialize component
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      const userData = JSON.parse(storedUser);
-      setCurrentUser(userData);
-      
-      if (propUserId && propUserId !== userData._id && propUserId !== userData.id) {
-        // Viewing someone else's profile
-        setIsOwnProfile(false);
-        fetchUserData(propUserId);
-        fetchFollowStatus(propUserId);
-      } else {
-        // Own profile
-        setIsOwnProfile(true);
-        setUser(userData);
-        fetchFollowRequests(); // Get pending follow requests
-      }
-      setLoading(false);
+useEffect(() => {
+  const storedUser = localStorage.getItem("user");
+  if (storedUser) {
+    const userData = JSON.parse(storedUser);
+    setCurrentUser(userData);
+
+    if (propUserId && propUserId !== userData._id && propUserId !== userData.id) {
+      // Viewing someone else's profile
+      setIsOwnProfile(false);
+      fetchUserData(propUserId);
+      fetchFollowStatus(propUserId);
     } else {
-      console.log("No user found, would redirect to login");
-      setLoading(false);
+      // ✅ Own profile → fetch from backend instead of only localStorage
+      setIsOwnProfile(true);
+      fetchUserData(userData._id || userData.id);
+      fetchFollowRequests();
     }
-  }, [propUserId]);
+    setLoading(false);
+  } else {
+    console.log("No user found, would redirect to login");
+    setLoading(false);
+  }
+}, [propUserId]);
+
+
 
   // Fetch videos when tab changes or user is loaded
   useEffect(() => {
@@ -357,7 +372,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
       timestamp: Date.now(),
       fromProfile: true
     };
-    
+
     sessionStorage.setItem('profileVideoNavigation', JSON.stringify(navigationData));
     window.location.href = '/';
   };
@@ -416,7 +431,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
             <div className="w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
               <Play className="w-8 h-8 text-white opacity-70 group-hover:opacity-100 transition-opacity" />
             </div>
-            
+
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent">
               <div className="absolute bottom-2 left-2 flex items-center space-x-1">
                 <svg
@@ -478,7 +493,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
             <X className="w-5 h-5" />
           </button>
         </div>
-        
+
         <div className="p-4 max-h-80 overflow-y-auto">
           {followRequests.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
@@ -598,7 +613,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
               <Share className="w-5 h-5" />
             </button>
             {isOwnProfile && (
-              <button 
+              <button
                 className="p-2 hover:bg-gray-800 rounded-full transition-colors"
                 onClick={() => console.log('Navigate to settings')}
               >
@@ -630,26 +645,27 @@ const ProfileScreen = ({ userId: propUserId }) => {
               <div className="absolute -bottom-1 -left-1 bg-green-500 rounded-full w-4 h-4 border-2 border-black"></div>
             )}
           </div>
-          
+
           <div className="flex-1">
             <div className="flex items-center space-x-4 mb-4">
               <div className="text-center">
-                <p className="font-bold text-lg">{displayUser.followingCount || 0}</p>
+                <p className="font-bold text-lg">{user?.following?.length || 0}</p>
                 <p className="text-gray-400 text-sm">Following</p>
               </div>
               <div className="text-center">
-                <p className="font-bold text-lg">{displayUser.followersCount || 0}</p>
+                <p className="font-bold text-lg">{user?.followers?.length || 0}</p>
                 <p className="text-gray-400 text-sm">Followers</p>
               </div>
               <div className="text-center">
-                <p className="font-bold text-lg">{displayUser.totalLikes || 0}</p>
+                <p className="font-bold text-lg">{user?.totalLikes || 0}</p>
                 <p className="text-gray-400 text-sm">Likes</p>
               </div>
               <div className="text-center">
-                <p className="font-bold text-lg text-yellow-400">{displayUser.points || 0}</p>
+                <p className="font-bold text-lg text-yellow-400">{user?.points || 0}</p>
                 <p className="text-yellow-400 text-sm">Points</p>
               </div>
             </div>
+
 
             <div className="flex space-x-2">
               {isOwnProfile ? (
@@ -683,7 +699,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
                     )}
                     <span>{getFollowButtonText()}</span>
                   </button>
-                  
+
                   {followStatus.canMessage && (
                     <button
                       onClick={startConversation}
@@ -716,13 +732,13 @@ const ProfileScreen = ({ userId: propUserId }) => {
               </div>
             )}
           </div>
-          
+
           {displayUser.bio && (
             <p className="text-sm text-gray-300 mb-3 leading-relaxed">
               {displayUser.bio}
             </p>
           )}
-          
+
           <div className="flex flex-col space-y-2 text-sm text-gray-400">
             {displayUser.email && isOwnProfile && (
               <div className="flex items-center space-x-2">
@@ -730,12 +746,12 @@ const ProfileScreen = ({ userId: propUserId }) => {
                 <span>{displayUser.email}</span>
               </div>
             )}
-            
+
             <div className="flex items-center space-x-2">
               <Calendar className="w-4 h-4" />
               <span>{formatJoinDate(displayUser.createdAt)}</span>
             </div>
-            
+
             {!isOwnProfile && !displayUser.isOnline && displayUser.lastSeen && (
               <div className="flex items-center space-x-2">
                 <Clock className="w-4 h-4" />
@@ -761,11 +777,10 @@ const ProfileScreen = ({ userId: propUserId }) => {
         <div className="flex border-b border-gray-800 mb-4">
           <button
             onClick={() => setActiveTab("videos")}
-            className={`flex-1 py-3 text-center font-semibold transition-colors ${
-              activeTab === "videos"
-                ? "border-b-2 border-pink-500 text-white"
-                : "text-gray-400 hover:text-gray-200"
-            }`}
+            className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === "videos"
+              ? "border-b-2 border-pink-500 text-white"
+              : "text-gray-400 hover:text-gray-200"
+              }`}
           >
             <span className="flex flex-col items-center">
               <svg
@@ -783,11 +798,10 @@ const ProfileScreen = ({ userId: propUserId }) => {
             <>
               <button
                 onClick={() => setActiveTab("liked")}
-                className={`flex-1 py-3 text-center font-semibold transition-colors ${
-                  activeTab === "liked"
-                    ? "border-b-2 border-pink-500 text-white"
-                    : "text-gray-400 hover:text-gray-200"
-                }`}
+                className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === "liked"
+                  ? "border-b-2 border-pink-500 text-white"
+                  : "text-gray-400 hover:text-gray-200"
+                  }`}
               >
                 <span className="flex flex-col items-center">
                   <Heart className="w-5 h-5 mb-1" />
@@ -797,11 +811,10 @@ const ProfileScreen = ({ userId: propUserId }) => {
 
               <button
                 onClick={() => setActiveTab("saved")}
-                className={`flex-1 py-3 text-center font-semibold transition-colors ${
-                  activeTab === "saved"
-                    ? "border-b-2 border-pink-500 text-white"
-                    : "text-gray-400 hover:text-gray-200"
-                }`}
+                className={`flex-1 py-3 text-center font-semibold transition-colors ${activeTab === "saved"
+                  ? "border-b-2 border-pink-500 text-white"
+                  : "text-gray-400 hover:text-gray-200"
+                  }`}
               >
                 <span className="flex flex-col items-center">
                   <svg
