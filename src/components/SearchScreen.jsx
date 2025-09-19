@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Search, TrendingUp, Hash, User, Play, Heart, UserCheck, UserPlus, MessageCircle, Shield } from 'lucide-react';
+import { Search, TrendingUp, Hash, User, Play, Heart, UserCheck, UserPlus, MessageCircle, Shield, Users } from 'lucide-react';
 
 const SearchScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('Top');
   const [searchResults, setSearchResults] = useState([]);
+  const [hashtagResults, setHashtagResults] = useState([]);
+  const [videoResults, setVideoResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [userFollowStatus, setUserFollowStatus] = useState({});
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
-  const filters = ['Top', 'Users', 'Videos', 'Sounds', 'LIVE', 'Hashtags'];
+  const filters = ['Top', 'Users', 'Videos', 'Hashtags', 'LIVE'];
 
   const trendingHashtags = [
     { tag: '#fyp', videos: '15.2B', color: 'from-pink-500 to-red-500' },
@@ -20,13 +22,6 @@ const SearchScreen = () => {
     { tag: '#comedy', videos: '9.8B', color: 'from-yellow-500 to-orange-500' },
     { tag: '#food', videos: '6.3B', color: 'from-red-500 to-pink-500' },
     { tag: '#travel', videos: '4.9B', color: 'from-blue-500 to-purple-500' }
-  ];
-
-  const trendingCreators = [
-    { username: 'creator1', followers: '2.3M', verified: true },
-    { username: 'dancer_pro', followers: '1.8M', verified: true },
-    { username: 'chef_amazing', followers: '3.1M', verified: false },
-    { username: 'comedian_king', followers: '1.2M', verified: true }
   ];
 
   // Helper function to get auth headers
@@ -46,6 +41,63 @@ const SearchScreen = () => {
     }
   }, []);
 
+  // Search videos by hashtag
+  const searchHashtags = async (query) => {
+    if (!query.trim()) {
+      setHashtagResults([]);
+      setVideoResults([]);
+      return;
+    }
+
+    setSearchLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/videos/`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const videos = await response.json();
+        
+        // Filter videos by hashtag
+        const hashtagQuery = query.startsWith('#') ? query.toLowerCase() : `#${query.toLowerCase()}`;
+        const matchingVideos = videos.filter(video => 
+          video.hashtags && video.hashtags.some(tag => 
+            tag.toLowerCase().includes(hashtagQuery) || 
+            tag.toLowerCase().includes(query.toLowerCase())
+          )
+        );
+
+        // Create hashtag summary
+        const hashtagCounts = {};
+        videos.forEach(video => {
+          if (video.hashtags) {
+            video.hashtags.forEach(tag => {
+              const lowerTag = tag.toLowerCase();
+              if (lowerTag.includes(query.toLowerCase()) || lowerTag.includes(hashtagQuery)) {
+                hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
+              }
+            });
+          }
+        });
+
+        const hashtagSummary = Object.entries(hashtagCounts).map(([tag, count]) => ({
+          tag,
+          videoCount: count,
+          color: trendingHashtags.find(t => t.tag === tag)?.color || 'from-gray-500 to-gray-600'
+        }));
+
+        setHashtagResults(hashtagSummary);
+        setVideoResults(matchingVideos);
+      }
+    } catch (error) {
+      console.error('Error searching hashtags:', error);
+      setHashtagResults([]);
+      setVideoResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   // Search users function
   const searchUsers = async (query) => {
     if (!query.trim()) {
@@ -55,11 +107,9 @@ const SearchScreen = () => {
 
     setSearchLoading(true);
     try {
-      // Try dedicated search endpoint first, fallback to getting all users
       let users = [];
 
       try {
-        // Try dedicated search endpoint first (using findUsers endpoint to avoid conflicts)
         const searchResponse = await fetch(
           `${API_BASE_URL}/auth/searchUsers?q=${encodeURIComponent(query)}`,
           { headers: getAuthHeaders() }
@@ -67,14 +117,13 @@ const SearchScreen = () => {
 
         if (searchResponse.ok) {
           const resJson = await searchResponse.json();
-          users = resJson.data || [];   // ✅ correctly grab array
+          users = resJson.data || [];
         } else if (searchResponse.status === 404) {
           throw new Error('Search endpoint not found');
         }
 
       } catch (searchError) {
         console.log('Using fallback search method');
-        // Fallback: get all users and filter client-side
         try {
           const allUsersResponse = await fetch(`${API_BASE_URL}/auth/getUsers`, {
             headers: getAuthHeaders()
@@ -136,7 +185,6 @@ const SearchScreen = () => {
 
     try {
       if (currentStatus.isFollowing) {
-        // Unfollow
         const response = await fetch(`${API_BASE_URL}/follow/unfollow/${userId}`, {
           method: 'POST',
           headers: getAuthHeaders()
@@ -154,7 +202,6 @@ const SearchScreen = () => {
           }));
         }
       } else {
-        // Follow
         const response = await fetch(`${API_BASE_URL}/follow/request/${userId}`, {
           method: 'POST',
           headers: getAuthHeaders()
@@ -200,7 +247,6 @@ const SearchScreen = () => {
 
       if (response.ok) {
         const conversation = await response.json();
-        // Navigate to messages with this conversation
         window.location.href = `/messages/${conversation._id}`;
       } else {
         const error = await response.json();
@@ -222,25 +268,36 @@ const SearchScreen = () => {
     const value = e.target.value;
     setSearchTerm(value);
 
-    // Only search for users when Users filter is active
-    if (activeFilter === 'Users' && value.trim()) {
+    if (value.trim()) {
       const timeoutId = setTimeout(() => {
-        searchUsers(value);
-      }, 300); // Debounce search
+        if (activeFilter === 'Users') {
+          searchUsers(value);
+        } else if (activeFilter === 'Hashtags') {
+          searchHashtags(value);
+        }
+      }, 300);
 
       return () => clearTimeout(timeoutId);
-    } else if (!value.trim()) {
+    } else {
       setSearchResults([]);
+      setHashtagResults([]);
+      setVideoResults([]);
     }
   };
 
   // Handle filter change
   const handleFilterChange = (filter) => {
     setActiveFilter(filter);
-    if (filter === 'Users' && searchTerm.trim()) {
-      searchUsers(searchTerm);
-    } else {
-      setSearchResults([]);
+    setSearchResults([]);
+    setHashtagResults([]);
+    setVideoResults([]);
+    
+    if (searchTerm.trim()) {
+      if (filter === 'Users') {
+        searchUsers(searchTerm);
+      } else if (filter === 'Hashtags') {
+        searchHashtags(searchTerm);
+      }
     }
   };
 
@@ -264,7 +321,7 @@ const SearchScreen = () => {
     return "bg-pink-600 text-white hover:bg-pink-700";
   };
 
-  // Format follower count
+  // Format numbers
   const formatNumber = (num) => {
     if (num >= 1000000) {
       return `${(num / 1000000).toFixed(1)}M`;
@@ -274,7 +331,69 @@ const SearchScreen = () => {
     return num?.toString() || '0';
   };
 
-  // Render user search results
+  // Render hashtag results
+  const renderHashtagResults = () => {
+    if (searchLoading) {
+      return (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="bg-gray-900 p-4 rounded-xl animate-pulse">
+              <div className="h-6 bg-gray-700 rounded w-32 mb-2"></div>
+              <div className="h-4 bg-gray-700 rounded w-20"></div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (hashtagResults.length === 0 && searchTerm.trim()) {
+      return (
+        <div className="text-center py-8 text-gray-400">
+          <Hash className="w-16 h-16 mx-auto mb-4 opacity-50" />
+          <p className="text-lg">No hashtags found</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {hashtagResults.map((hashtag) => (
+          <div key={hashtag.tag} className="bg-gray-900 rounded-xl p-4 hover:bg-gray-800 transition-colors cursor-pointer">
+            <div className="flex items-center space-x-3">
+              <div className={`w-10 h-10 rounded-lg bg-gradient-to-r ${hashtag.color}`}></div>
+              <div className="flex-1">
+                <p className="font-bold text-white text-lg">{hashtag.tag}</p>
+                <p className="text-gray-400 text-sm">{formatNumber(hashtag.videoCount)} videos</p>
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        {videoResults.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-lg font-bold mb-3">Videos</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {videoResults.slice(0, 9).map((video) => (
+                <div key={video._id} className="relative aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform">
+                  <video
+                    src={video.url}
+                    className="w-full h-full object-cover"
+                    muted
+                  />
+                  <div className="absolute bottom-2 left-2 flex items-center space-x-1 text-white text-xs">
+                    <Play className="w-3 h-3" />
+                    <span>{formatNumber(video.likesCount || 0)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render user results
   const renderUserResults = () => {
     if (searchLoading) {
       return (
@@ -300,7 +419,6 @@ const SearchScreen = () => {
         <div className="text-center py-8 text-gray-400">
           <User className="w-16 h-16 mx-auto mb-4 opacity-50" />
           <p className="text-lg">No users found</p>
-          <p className="text-sm">Try searching with a different username</p>
         </div>
       );
     }
@@ -309,6 +427,7 @@ const SearchScreen = () => {
       <div className="space-y-3">
         {searchResults.map((user) => {
           const followStatus = userFollowStatus[user._id] || {};
+          const isFriend = followStatus.relationship === 'mutual';
 
           return (
             <div key={user._id} className="bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors">
@@ -335,9 +454,15 @@ const SearchScreen = () => {
                       {user.isVerified && (
                         <Shield className="w-4 h-4 text-blue-500" />
                       )}
-                      {followStatus.relationship === 'mutual' && (
+                      {isFriend && (
                         <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-                          Mutual
+                          <Users className="w-3 h-3 inline mr-1" />
+                          Friends
+                        </span>
+                      )}
+                      {followStatus.relationship === 'following' && (
+                        <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+                          Following
                         </span>
                       )}
                     </div>
@@ -349,8 +474,8 @@ const SearchScreen = () => {
                 </button>
 
                 <div className="flex items-center space-x-2">
-                  {/* Message button - only show if can message */}
-                  {followStatus.canMessage && (
+                  {/* Message button - show if friends or can message */}
+                  {(isFriend || followStatus.canMessage) && (
                     <button
                       onClick={() => startConversation(user)}
                       className="p-2 bg-blue-600 hover:bg-blue-700 rounded-full transition-colors"
@@ -361,18 +486,20 @@ const SearchScreen = () => {
                   )}
 
                   {/* Follow button */}
-                  <button
-                    onClick={() => handleFollowToggle(user)}
-                    disabled={followStatus.hasPendingRequest}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 ${getFollowButtonStyle(user._id)}`}
-                  >
-                    {followStatus.isFollowing ? (
-                      <UserCheck className="w-4 h-4" />
-                    ) : (
-                      <UserPlus className="w-4 h-4" />
-                    )}
-                    <span className="text-sm">{getFollowButtonText(user._id)}</span>
-                  </button>
+                  {!isFriend && (
+                    <button
+                      onClick={() => handleFollowToggle(user)}
+                      disabled={followStatus.hasPendingRequest}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 ${getFollowButtonStyle(user._id)}`}
+                    >
+                      {followStatus.isFollowing ? (
+                        <UserCheck className="w-4 h-4" />
+                      ) : (
+                        <UserPlus className="w-4 h-4" />
+                      )}
+                      <span className="text-sm">{getFollowButtonText(user._id)}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -392,7 +519,10 @@ const SearchScreen = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder={activeFilter === 'Users' ? 'Search users...' : 'Search'}
+              placeholder={
+                activeFilter === 'Users' ? 'Search users...' :
+                activeFilter === 'Hashtags' ? 'Search hashtags...' : 'Search'
+              }
               value={searchTerm}
               onChange={handleSearchChange}
               className="w-full bg-gray-800/50 text-white pl-10 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-white/20 focus:bg-gray-800"
@@ -418,20 +548,30 @@ const SearchScreen = () => {
       </div>
 
       <div className="p-4">
-        {/* Show user search results when Users filter is active and there's a search term */}
+        {/* Show search results based on active filter */}
         {activeFilter === 'Users' && (searchTerm.trim() || searchResults.length > 0) ? (
           <div className="mb-8">
             <h2 className="text-xl font-bold mb-4">Users</h2>
             {renderUserResults()}
           </div>
+        ) : activeFilter === 'Hashtags' && (searchTerm.trim() || hashtagResults.length > 0) ? (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4">Hashtags</h2>
+            {renderHashtagResults()}
+          </div>
         ) : (
           <>
-            {/* Trending Section - show when not actively searching users */}
+            {/* Trending Section */}
             <div className="mb-8">
-              <h2 className="text-xl font-bold mb-4">Trending</h2>
+              <h2 className="text-xl font-bold mb-4">Trending Hashtags</h2>
               <div className="grid grid-cols-2 gap-3">
                 {trendingHashtags.map((item) => (
-                  <div key={item.tag} className="bg-gray-900 rounded-xl p-4 hover:bg-gray-800 transition-colors cursor-pointer">
+                  <div key={item.tag} className="bg-gray-900 rounded-xl p-4 hover:bg-gray-800 transition-colors cursor-pointer"
+                       onClick={() => {
+                         setActiveFilter('Hashtags');
+                         setSearchTerm(item.tag.substring(1));
+                         searchHashtags(item.tag.substring(1));
+                       }}>
                     <div className={`w-8 h-8 rounded-lg bg-gradient-to-r ${item.color} mb-3`}></div>
                     <span className="text-white font-bold text-lg">{item.tag}</span>
                     <p className="text-gray-400 text-sm mt-1">{item.videos} videos</p>
@@ -440,35 +580,35 @@ const SearchScreen = () => {
               </div>
             </div>
 
-            {/* Suggested Accounts */}
-            <div>
-              <h2 className="text-xl font-bold mb-4">Suggested accounts</h2>
+            {/* Quick Actions */}
+            <div className="mb-8">
+              <h2 className="text-xl font-bold mb-4">Discover</h2>
               <div className="space-y-3">
-                {trendingCreators.map((creator, index) => (
-                  <div key={creator.username} className="flex items-center justify-between bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors">
-                    <div className="flex items-center space-x-3">
-                      <img
-                        src={`https://i.pravatar.cc/150?img=${index + 10}`}
-                        alt={creator.username}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                      <div>
-                        <div className="flex items-center space-x-1">
-                          <p className="font-bold">{creator.username}</p>
-                          {creator.verified && (
-                            <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                        </div>
-                        <p className="text-gray-400 text-sm">{creator.followers} followers</p>
-                      </div>
+                <button 
+                  onClick={() => setActiveFilter('Users')}
+                  className="w-full bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <User className="w-6 h-6 text-pink-500" />
+                    <div>
+                      <p className="font-bold">Find People</p>
+                      <p className="text-gray-400 text-sm">Discover new creators</p>
                     </div>
-                    <button className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-lg font-bold transition-colors">
-                      Follow
-                    </button>
                   </div>
-                ))}
+                </button>
+                
+                <button 
+                  onClick={() => setActiveFilter('Hashtags')}
+                  className="w-full bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <Hash className="w-6 h-6 text-blue-500" />
+                    <div>
+                      <p className="font-bold">Explore Hashtags</p>
+                      <p className="text-gray-400 text-sm">Find trending topics</p>
+                    </div>
+                  </div>
+                </button>
               </div>
             </div>
           </>
