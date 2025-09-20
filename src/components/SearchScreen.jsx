@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, TrendingUp, Hash, User, Play, Heart, UserCheck, UserPlus, MessageCircle, Shield, Users } from 'lucide-react';
+import { Search, TrendingUp, Hash, User, Play, Heart, UserCheck, UserPlus, MessageCircle, Shield, Users, Bell, UserMinus } from 'lucide-react';
+import NotificationsScreen from './NotificationsScreen';
+import AddFriendsScreen from './AddFriendScreen';
 
 const SearchScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -7,9 +9,13 @@ const SearchScreen = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [hashtagResults, setHashtagResults] = useState([]);
   const [videoResults, setVideoResults] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [userFollowStatus, setUserFollowStatus] = useState({});
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showAddFriends, setShowAddFriends] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
@@ -33,13 +39,126 @@ const SearchScreen = () => {
     };
   };
 
-  // Load current user
+  // Load current user and notification count
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       setCurrentUser(JSON.parse(storedUser));
     }
+    fetchNotificationCount();
   }, []);
+
+  // Fetch notification count
+  const fetchNotificationCount = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/follow/requests`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const requests = await response.json();
+        setNotificationCount(requests.length);
+      }
+    } catch (error) {
+      console.error('Error fetching notification count:', error);
+    }
+  };
+
+  // Fetch user's friends
+  const fetchUserFriends = async () => {
+    setSearchLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/follow/friends`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const friends = await response.json();
+        const friendsArray = friends.data || friends;
+        setFriendsList(friendsArray);
+        
+        // Set all friends as mutual followers
+        const friendsStatus = {};
+        if (Array.isArray(friendsArray)) {
+          friendsArray.forEach(friend => {
+            friendsStatus[friend._id] = {
+              isFollowing: true,
+              isFollowedBy: true,
+              relationship: 'mutual',
+              canMessage: true
+            };
+          });
+        }
+        setUserFollowStatus(friendsStatus);
+      } else {
+        // Fallback: get followers and following, find mutual
+        try {
+          const [followersRes, followingRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/follow/followers`, { headers: getAuthHeaders() }),
+            fetch(`${API_BASE_URL}/follow/following`, { headers: getAuthHeaders() })
+          ]);
+
+          if (followersRes.ok && followingRes.ok) {
+            const followers = await followersRes.json();
+            const following = await followingRes.json();
+            
+            const followersData = followers.data || followers;
+            const followingData = following.data || following;
+            
+            // Find mutual friends
+            const mutualFriends = followingData.filter(followedUser =>
+              followersData.some(follower => follower._id === followedUser._id)
+            );
+            
+            setFriendsList(mutualFriends);
+            
+            // Set mutual status
+            const friendsStatus = {};
+            if (Array.isArray(mutualFriends)) {
+              mutualFriends.forEach(friend => {
+                friendsStatus[friend._id] = {
+                  isFollowing: true,
+                  isFollowedBy: true,
+                  relationship: 'mutual',
+                  canMessage: true
+                };
+              });
+            }
+            setUserFollowStatus(friendsStatus);
+          }
+        } catch (fallbackError) {
+          console.error('Fallback friends fetch failed:', fallbackError);
+          setFriendsList([]);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+      setFriendsList([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Show notifications screen
+  if (showNotifications) {
+    return (
+      <NotificationsScreen 
+        onBack={() => {
+          setShowNotifications(false);
+          fetchNotificationCount(); // Refresh count when coming back
+        }} 
+      />
+    );
+  }
+
+  // Show add friends screen
+  if (showAddFriends) {
+    return (
+      <AddFriendsScreen 
+        onBack={() => setShowAddFriends(false)} 
+      />
+    );
+  }
 
   // Search videos by hashtag
   const searchHashtags = async (query) => {
@@ -200,6 +319,11 @@ const SearchScreen = () => {
               relationship: prev[userId]?.isFollowedBy ? 'follower' : 'none'
             }
           }));
+
+          // If this was a mutual friend, remove from friends list
+          if (currentStatus.relationship === 'mutual') {
+            setFriendsList(prev => prev.filter(friend => friend._id !== userId));
+          }
         }
       } else {
         const response = await fetch(`${API_BASE_URL}/follow/request/${userId}`, {
@@ -282,6 +406,11 @@ const SearchScreen = () => {
       setSearchResults([]);
       setHashtagResults([]);
       setVideoResults([]);
+      
+      // Show friends when Users filter is active and search is empty
+      if (activeFilter === 'Users') {
+        fetchUserFriends();
+      }
     }
   };
 
@@ -292,12 +421,15 @@ const SearchScreen = () => {
     setHashtagResults([]);
     setVideoResults([]);
     
-    if (searchTerm.trim()) {
-      if (filter === 'Users') {
+    if (filter === 'Users') {
+      if (searchTerm.trim()) {
         searchUsers(searchTerm);
-      } else if (filter === 'Hashtags') {
-        searchHashtags(searchTerm);
+      } else {
+        // Show friends when Users tab is selected and no search term
+        fetchUserFriends();
       }
+    } else if (filter === 'Hashtags' && searchTerm.trim()) {
+      searchHashtags(searchTerm);
     }
   };
 
@@ -393,8 +525,11 @@ const SearchScreen = () => {
     );
   };
 
-  // Render user results
+  // Render user results (search results or friends list)
   const renderUserResults = () => {
+    const usersToShow = searchTerm.trim() ? searchResults : friendsList;
+    const isShowingFriends = !searchTerm.trim() && activeFilter === 'Users';
+
     if (searchLoading) {
       return (
         <div className="space-y-4">
@@ -414,18 +549,23 @@ const SearchScreen = () => {
       );
     }
 
-    if (searchResults.length === 0 && searchTerm.trim()) {
+    if (usersToShow.length === 0) {
       return (
         <div className="text-center py-8 text-gray-400">
           <User className="w-16 h-16 mx-auto mb-4 opacity-50" />
-          <p className="text-lg">No users found</p>
+          <p className="text-lg">
+            {isShowingFriends ? 'No friends yet' : 'No users found'}
+          </p>
+          <p className="text-sm mt-2">
+            {isShowingFriends ? 'Start following people to build your friend network!' : 'Try a different search term'}
+          </p>
         </div>
       );
     }
 
     return (
       <div className="space-y-3">
-        {searchResults.map((user) => {
+        {usersToShow.map((user) => {
           const followStatus = userFollowStatus[user._id] || {};
           const isFriend = followStatus.relationship === 'mutual';
 
@@ -485,21 +625,23 @@ const SearchScreen = () => {
                     </button>
                   )}
 
-                  {/* Follow button */}
-                  {!isFriend && (
-                    <button
-                      onClick={() => handleFollowToggle(user)}
-                      disabled={followStatus.hasPendingRequest}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 ${getFollowButtonStyle(user._id)}`}
-                    >
-                      {followStatus.isFollowing ? (
-                        <UserCheck className="w-4 h-4" />
+                  {/* Follow/Unfollow button */}
+                  <button
+                    onClick={() => handleFollowToggle(user)}
+                    disabled={followStatus.hasPendingRequest}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 ${getFollowButtonStyle(user._id)}`}
+                  >
+                    {followStatus.isFollowing ? (
+                      followStatus.relationship === 'mutual' ? (
+                        <UserMinus className="w-4 h-4" />
                       ) : (
-                        <UserPlus className="w-4 h-4" />
-                      )}
-                      <span className="text-sm">{getFollowButtonText(user._id)}</span>
-                    </button>
-                  )}
+                        <UserCheck className="w-4 h-4" />
+                      )
+                    ) : (
+                      <UserPlus className="w-4 h-4" />
+                    )}
+                    <span className="text-sm">{getFollowButtonText(user._id)}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -514,6 +656,34 @@ const SearchScreen = () => {
       {/* Header */}
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10">
         <div className="p-4">
+          {/* Top bar with title, friends button, and notifications */}
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold">Search</h1>
+            <div className="flex items-center space-x-2">
+              {/* Add Friends Button */}
+              <button
+                onClick={() => setShowAddFriends(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded-full transition-colors"
+              >
+                <UserPlus className="w-5 h-5" />
+                <span className="text-sm font-medium">Add Friends</span>
+              </button>
+              
+              {/* Notifications Button */}
+              <button
+                onClick={() => setShowNotifications(true)}
+                className="relative p-2 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <Bell className="w-6 h-6" />
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                    {notificationCount > 9 ? '9+' : notificationCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
           {/* Search Bar */}
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -549,9 +719,18 @@ const SearchScreen = () => {
 
       <div className="p-4">
         {/* Show search results based on active filter */}
-        {activeFilter === 'Users' && (searchTerm.trim() || searchResults.length > 0) ? (
+        {activeFilter === 'Users' ? (
           <div className="mb-8">
-            <h2 className="text-xl font-bold mb-4">Users</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">
+                {searchTerm.trim() ? 'Search Results' : 'Your Friends'}
+              </h2>
+              {!searchTerm.trim() && (
+                <span className="text-sm text-gray-400">
+                  {friendsList.length} friends
+                </span>
+              )}
+            </div>
             {renderUserResults()}
           </div>
         ) : activeFilter === 'Hashtags' && (searchTerm.trim() || hashtagResults.length > 0) ? (
@@ -591,8 +770,8 @@ const SearchScreen = () => {
                   <div className="flex items-center space-x-3">
                     <User className="w-6 h-6 text-pink-500" />
                     <div>
-                      <p className="font-bold">Find People</p>
-                      <p className="text-gray-400 text-sm">Discover new creators</p>
+                      <p className="font-bold">Find People & Friends</p>
+                      <p className="text-gray-400 text-sm">Discover new creators and see your friends</p>
                     </div>
                   </div>
                 </button>
@@ -607,6 +786,26 @@ const SearchScreen = () => {
                       <p className="font-bold">Explore Hashtags</p>
                       <p className="text-gray-400 text-sm">Find trending topics</p>
                     </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => setShowNotifications(true)}
+                  className="w-full bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3 justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Bell className="w-6 h-6 text-yellow-500" />
+                      <div>
+                        <p className="font-bold">Notifications</p>
+                        <p className="text-gray-400 text-sm">Follow requests and updates</p>
+                      </div>
+                    </div>
+                    {notificationCount > 0 && (
+                      <span className="bg-red-500 text-white text-sm px-2 py-1 rounded-full">
+                        {notificationCount}
+                      </span>
+                    )}
                   </div>
                 </button>
               </div>

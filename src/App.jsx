@@ -19,12 +19,15 @@ import ProfileScreen from "./components/ProfileScreen";
 import LiveBrowse from "./pages/LiveBrowse.jsx";
 import LiveViewer from './components/LiveViewer';
 import EditProfileScreen from "./components/EditProfileScreen.jsx";
+import AddFriendsScreen from "./components/AddFriendScreen.jsx";
 
 // Import Login and Signup pages
 import Login from "./pages/Login.jsx"
 import Signup from "./pages/SignUp.jsx"
 import MessagingScreen from "./components/MessagingScreen.jsx";
 import PointsRechargeScreen from "./components/PointsRechargeScreen.jsx";
+import NotificationsScreen from "./components/NotificationsScreen.jsx";
+import FollowRequestsScreen from "./components/FollowRequestScreen.jsx";
 
 
 
@@ -60,12 +63,11 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
                 </div>
               ) : (
                 <Icon
-                  className={`w-6 h-6 mb-1 ${
-                    isActive
-                     ? item.id === "live"
-                    ? "text-red-500" // 🔴 red for live
-                    : "text-white"
-                    : "text-gray-400"
+                  className={`w-6 h-6 mb-1 ${isActive
+                      ? item.id === "live"
+                        ? "text-red-500" // 🔴 red for live
+                        : "text-white"
+                      : "text-gray-400"
                     }`}
                 />
               )}
@@ -114,10 +116,16 @@ const App = () => {
           <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
           <Route path="/profile/:userId" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
 
-           <Route path="/edit-profile" element={<ProtectedRoute><EditProfileScreen /></ProtectedRoute>} />
+          <Route path="/edit-profile" element={<ProtectedRoute><EditProfileScreen /></ProtectedRoute>} />
 
-             <Route path="/recharge-points" element={<ProtectedRoute><PointsRechargeScreen /></ProtectedRoute>} />
-         
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsScreen /></ProtectedRoute>} />
+
+          <Route path="/follow-requests" element={<ProtectedRoute><FollowRequestsScreen /></ProtectedRoute>} />
+
+          <Route path="/add-friends" element={<ProtectedRoute><AddFriendsScreen /></ProtectedRoute>} />
+
+          <Route path="/recharge-points" element={<ProtectedRoute><PointsRechargeScreen /></ProtectedRoute>} />
+
 
           <Route path="/messaging" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
           <Route path="/messages/:conversationId" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
