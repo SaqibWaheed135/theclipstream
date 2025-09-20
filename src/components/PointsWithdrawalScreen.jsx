@@ -75,7 +75,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
   // Fetch points balance
   const fetchPointsBalance = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/points/balance`, {
+      const response = await fetch(`${API_BASE_URL}/points/balance`, {
         headers: getAuthHeaders()
       });
 
@@ -291,6 +291,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
     const amount = parseFloat(withdrawalAmount);
     const pointsRequired = usdToPoints(amount);
     const selectedMethod = withdrawalMethods.find(m => m.id === selectedWithdrawalMethod);
+    console.log("Amount:", amount, "Points Required:", pointsRequired, "Available Balance:", pointsBalance);
+
 
     // Validation
     if (!amount || amount <= 0) {

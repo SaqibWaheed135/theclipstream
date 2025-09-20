@@ -9,6 +9,8 @@ const ProfileScreen = ({ userId: propUserId }) => {
   const [loading, setLoading] = useState(true);
   const [videoLoading, setVideoLoading] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [pointsLoading, setPointsLoading] = useState(false);
+  const [userPoints, setUserPoints] = useState(0);
 
   // Follow system states
   const [followStatus, setFollowStatus] = useState({
@@ -39,6 +41,27 @@ const ProfileScreen = ({ userId: propUserId }) => {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     };
+  };
+
+  // Fetch user points from dedicated endpoint
+  const fetchUserPoints = async () => {
+    if (!isOwnProfile) return; // Only fetch points for own profile
+    
+    try {
+      setPointsLoading(true);
+      const response = await fetch(`${API_BASE_URL}/users/points/balance`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const pointsData = await response.json();
+        setUserPoints(pointsData.balance || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching user points:', error);
+    } finally {
+      setPointsLoading(false);
+    }
   };
 
   // Fetch follow status
@@ -74,70 +97,69 @@ const ProfileScreen = ({ userId: propUserId }) => {
   };
 
   // Handle follow/unfollow
- const handleFollowToggle = async () => {
-  if (followLoading || !user) return;
-  setFollowLoading(true);
+  const handleFollowToggle = async () => {
+    if (followLoading || !user) return;
+    setFollowLoading(true);
 
-  try {
-    if (followStatus.isFollowing) {
-      // 🔴 Unfollow
-      const response = await fetch(`${API_BASE_URL}/follow/unfollow/${user._id || user.id}`, {
-        method: 'POST',
-        headers: getAuthHeaders()
-      });
+    try {
+      if (followStatus.isFollowing) {
+        // 🔴 Unfollow
+        const response = await fetch(`${API_BASE_URL}/follow/unfollow/${user._id || user.id}`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
 
-      if (response.ok) {
-        setFollowStatus(prev => ({
-          ...prev,
-          isFollowing: false,
-          canMessage: false,
-          relationship: prev.isFollowedBy ? 'follower' : 'none'
-        }));
-
-        // Update local state counts
-        setUser(prev => ({
-          ...prev,
-          followers: prev.followers?.filter(f => f !== currentUser._id) || []
-        }));
-      }
-    } else {
-      // 🟢 Follow
-      const response = await fetch(`${API_BASE_URL}/follow/request/${user._id || user.id}`, {
-        method: 'POST',
-        headers: getAuthHeaders()
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-
-        if (result.requiresApproval) {
+        if (response.ok) {
           setFollowStatus(prev => ({
             ...prev,
-            hasPendingRequest: true
-          }));
-        } else {
-          setFollowStatus(prev => ({
-            ...prev,
-            isFollowing: true,
-            canMessage: prev.isFollowedBy,
-            relationship: prev.isFollowedBy ? 'mutual' : 'following'
+            isFollowing: false,
+            canMessage: false,
+            relationship: prev.isFollowedBy ? 'follower' : 'none'
           }));
 
           // Update local state counts
           setUser(prev => ({
             ...prev,
-            followers: [...(prev.followers || []), currentUser._id]
+            followers: prev.followers?.filter(f => f !== currentUser._id) || []
           }));
         }
-      }
-    }
-  } catch (error) {
-    console.error('Error toggling follow:', error);
-  } finally {
-    setFollowLoading(false);
-  }
-};
+      } else {
+        // 🟢 Follow
+        const response = await fetch(`${API_BASE_URL}/follow/request/${user._id || user.id}`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
 
+        if (response.ok) {
+          const result = await response.json();
+
+          if (result.requiresApproval) {
+            setFollowStatus(prev => ({
+              ...prev,
+              hasPendingRequest: true
+            }));
+          } else {
+            setFollowStatus(prev => ({
+              ...prev,
+              isFollowing: true,
+              canMessage: prev.isFollowedBy,
+              relationship: prev.isFollowedBy ? 'mutual' : 'following'
+            }));
+
+            // Update local state counts
+            setUser(prev => ({
+              ...prev,
+              followers: [...(prev.followers || []), currentUser._id]
+            }));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
 
   // Handle follow request response
   const handleFollowRequest = async (requestId, action) => {
@@ -197,14 +219,18 @@ const ProfileScreen = ({ userId: propUserId }) => {
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
+      } else {
+        console.error('Failed to fetch user data');
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
     }
   };
 
-  // Existing video fetch functions (keep as is)
+  // Fetch user videos with improved error handling
   const fetchUserVideos = async () => {
+    if (!user) return;
+    
     try {
       setVideoLoading(true);
       let currentUserVideos = [];
@@ -297,31 +323,35 @@ const ProfileScreen = ({ userId: propUserId }) => {
   };
 
   // Initialize component
-useEffect(() => {
-  const storedUser = localStorage.getItem("user");
-  if (storedUser) {
-    const userData = JSON.parse(storedUser);
-    setCurrentUser(userData);
+  useEffect(() => {
+    const initializeProfile = async () => {
+      setLoading(true);
+      const storedUser = localStorage.getItem("user");
+      
+      if (storedUser) {
+        const userData = JSON.parse(storedUser);
+        setCurrentUser(userData);
 
-    if (propUserId && propUserId !== userData._id && propUserId !== userData.id) {
-      // Viewing someone else's profile
-      setIsOwnProfile(false);
-      fetchUserData(propUserId);
-      fetchFollowStatus(propUserId);
-    } else {
-      // ✅ Own profile → fetch from backend instead of only localStorage
-      setIsOwnProfile(true);
-      fetchUserData(userData._id || userData.id);
-      fetchFollowRequests();
-    }
-    setLoading(false);
-  } else {
-    console.log("No user found, would redirect to login");
-    setLoading(false);
-  }
-}, [propUserId]);
+        if (propUserId && propUserId !== userData._id && propUserId !== userData.id) {
+          // Viewing someone else's profile
+          setIsOwnProfile(false);
+          await fetchUserData(propUserId);
+          await fetchFollowStatus(propUserId);
+        } else {
+          // Own profile → fetch from backend
+          setIsOwnProfile(true);
+          await fetchUserData(userData._id || userData.id);
+          await fetchFollowRequests();
+          await fetchUserPoints(); // Fetch points for own profile
+        }
+      } else {
+        console.log("No user found, would redirect to login");
+      }
+      setLoading(false);
+    };
 
-
+    initializeProfile();
+  }, [propUserId]);
 
   // Fetch videos when tab changes or user is loaded
   useEffect(() => {
@@ -428,10 +458,35 @@ useEffect(() => {
             className="relative aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity group"
             onClick={() => handleVideoClick(video._id, videos)}
           >
-            <div className="w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
-              <Play className="w-8 h-8 text-white opacity-70 group-hover:opacity-100 transition-opacity" />
+            {/* Video Thumbnail */}
+            {video.thumbnailUrl ? (
+              <img
+                src={video.thumbnailUrl}
+                alt="Video thumbnail"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback to gradient if thumbnail fails
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+                <Play className="w-8 h-8 text-white opacity-70" />
+              </div>
+            )}
+            
+            {/* Fallback gradient (hidden by default) */}
+            <div className="hidden w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 items-center justify-center absolute inset-0">
+              <Play className="w-8 h-8 text-white opacity-70" />
             </div>
 
+            {/* Play button overlay */}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+              <Play className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+            </div>
+
+            {/* Video info overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent">
               <div className="absolute bottom-2 left-2 flex items-center space-x-1">
                 <svg
@@ -538,32 +593,39 @@ useEffect(() => {
     </div>
   );
 
+  // Loading screen
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading profile...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mx-auto mb-6"></div>
+          <p className="text-gray-400 text-lg mb-2">Loading profile...</p>
+          <p className="text-gray-500 text-sm">Fetching user data from server</p>
         </div>
       </div>
     );
   }
 
-  const displayUser = user || {
-    _id: 'demo-user',
-    username: 'DemoUser',
-    email: 'demo@example.com',
-    avatar: null,
-    bio: 'This is a demo profile showcasing the follow and messaging features.',
-    points: 1250,
-    isVerified: true,
-    followersCount: 15420,
-    followingCount: 892,
-    totalLikes: 125000,
-    totalVideos: 24,
-    savedVideosCount: 8,
-    createdAt: '2023-01-15T00:00:00.000Z'
-  };
+  // If no user data after loading, show error
+  if (!loading && !user) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-500 mb-4">
+            <X className="w-16 h-16 mx-auto mb-4" />
+          </div>
+          <p className="text-gray-400 text-lg mb-2">Failed to load profile</p>
+          <p className="text-gray-500 text-sm mb-4">Unable to fetch user data</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-pink-600 hover:bg-pink-700 px-6 py-2 rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const getFollowButtonText = () => {
     if (followStatus.hasPendingRequest) return "Requested";
@@ -587,11 +649,11 @@ useEffect(() => {
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <h1 className="text-xl font-bold">{displayUser.username}</h1>
-            {displayUser.isVerified && (
+            <h1 className="text-xl font-bold">{user.username}</h1>
+            {user.isVerified && (
               <Shield className="w-5 h-5 text-blue-500" />
             )}
-            {displayUser.isPrivate && (
+            {user.isPrivate && (
               <div className="bg-gray-700 px-2 py-1 rounded-full">
                 <span className="text-xs">Private</span>
               </div>
@@ -613,12 +675,12 @@ useEffect(() => {
               <Share className="w-5 h-5" />
             </button>
             {isOwnProfile && (
-               <button
-                    onClick={()=>window.location.href = '/recharge-points'}
-                    className="flex-1 py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors"
-                  >
-                    Recharge Points
-                  </button>
+              <button
+                onClick={() => window.location.href = '/recharge-points'}
+                className="py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors"
+              >
+                Recharge Points
+              </button>
             )}
           </div>
         </div>
@@ -629,19 +691,19 @@ useEffect(() => {
         <div className="flex items-start space-x-4 mb-6">
           <div className="relative">
             <img
-              src={displayUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayUser.username)}&background=random&color=fff&size=200&bold=true`}
-              alt={`${displayUser.username}'s profile`}
+              src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=random&color=fff&size=200&bold=true`}
+              alt={`${user.username}'s profile`}
               className="w-24 h-24 rounded-full object-cover border-2 border-gray-700"
               onError={(e) => {
-                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayUser.username)}&background=random&color=fff&size=200&bold=true`;
+                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=random&color=fff&size=200&bold=true`;
               }}
             />
-            {displayUser.isVerified && (
+            {user.isVerified && (
               <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full p-1">
                 <Shield className="w-3 h-3 text-white" />
               </div>
             )}
-            {!isOwnProfile && displayUser.isOnline && (
+            {!isOwnProfile && user.isOnline && (
               <div className="absolute -bottom-1 -left-1 bg-green-500 rounded-full w-4 h-4 border-2 border-black"></div>
             )}
           </div>
@@ -656,19 +718,46 @@ useEffect(() => {
                 <p className="font-bold text-lg">{user?.followers?.length || 0}</p>
                 <p className="text-gray-400 text-sm">Followers</p>
               </div>
-
-              <div className="text-center">
-                <p className="font-bold text-lg text-yellow-400">{user?.points || 0}</p>
+              <div>
+                <div className="flex items-center justify-center space-x-2 mb-1">
+                  <p className="font-bold text-lg text-yellow-400">
+                    {pointsLoading ? (
+                      <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      formatNumber(isOwnProfile ? userPoints : (user?.points || 0))
+                    )}
+                  </p>
+                  {isOwnProfile && (
+                    <button
+                      onClick={() => window.location.href = '/withdraw-points'}
+                      className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs rounded-full transition-colors flex items-center space-x-1"
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
+                        />
+                      </svg>
+                      <span>Withdraw</span>
+                    </button>
+                  )}
+                </div>
                 <p className="text-yellow-400 text-sm">Points</p>
               </div>
             </div>
-
 
             <div className="flex space-x-2">
               {isOwnProfile ? (
                 <>
                   <button
-                    onClick={()=>window.location.href = '/edit-profile'}
+                    onClick={() => window.location.href = '/edit-profile'}
                     className="flex-1 py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors"
                   >
                     Edit Profile
@@ -715,8 +804,8 @@ useEffect(() => {
         {/* Bio Section */}
         <div className="mb-6">
           <div className="flex items-center space-x-2 mb-3">
-            <h2 className="text-lg font-semibold">{displayUser.username}</h2>
-            {displayUser.isVerified && (
+            <h2 className="text-lg font-semibold">{user.username}</h2>
+            {user.isVerified && (
               <div className="flex items-center space-x-1 bg-blue-500/20 px-2 py-1 rounded-full">
                 <Shield className="w-3 h-3 text-blue-400" />
                 <span className="text-xs text-blue-400">Verified</span>
@@ -730,29 +819,29 @@ useEffect(() => {
             )}
           </div>
 
-          {displayUser.bio && (
+          {user.bio && (
             <p className="text-sm text-gray-300 mb-3 leading-relaxed">
-              {displayUser.bio}
+              {user.bio}
             </p>
           )}
 
           <div className="flex flex-col space-y-2 text-sm text-gray-400">
-            {displayUser.email && isOwnProfile && (
+            {user.email && isOwnProfile && (
               <div className="flex items-center space-x-2">
                 <Mail className="w-4 h-4" />
-                <span>{displayUser.email}</span>
+                <span>{user.email}</span>
               </div>
             )}
 
             <div className="flex items-center space-x-2">
               <Calendar className="w-4 h-4" />
-              <span>{formatJoinDate(displayUser.createdAt)}</span>
+              <span>{formatJoinDate(user.createdAt)}</span>
             </div>
 
-            {!isOwnProfile && !displayUser.isOnline && displayUser.lastSeen && (
+            {!isOwnProfile && !user.isOnline && user.lastSeen && (
               <div className="flex items-center space-x-2">
                 <Clock className="w-4 h-4" />
-                <span>Last seen {new Date(displayUser.lastSeen).toLocaleDateString()}</span>
+                <span>Last seen {new Date(user.lastSeen).toLocaleDateString()}</span>
               </div>
             )}
           </div>
@@ -761,11 +850,13 @@ useEffect(() => {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-pink-500">{displayUser.totalVideos || userVideos.length || 0}</p>
+            <p className="text-2xl font-bold text-pink-500">{user.totalVideos || userVideos.length || 0}</p>
             <p className="text-sm text-gray-400">Videos Created</p>
           </div>
           <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-purple-500">{isOwnProfile ? (displayUser.savedVideosCount || savedVideos.length || 0) : followStatus.relationship}</p>
+            <p className="text-2xl font-bold text-purple-500 capitalize">
+              {isOwnProfile ? (user.savedVideosCount || savedVideos.length || 0) : (followStatus.relationship || 'none')}
+            </p>
             <p className="text-sm text-gray-400">{isOwnProfile ? 'Videos Saved' : 'Relationship'}</p>
           </div>
         </div>
