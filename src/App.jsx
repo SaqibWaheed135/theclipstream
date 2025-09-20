@@ -28,6 +28,7 @@ import MessagingScreen from "./components/MessagingScreen.jsx";
 import PointsRechargeScreen from "./components/PointsRechargeScreen.jsx";
 import NotificationsScreen from "./components/NotificationsScreen.jsx";
 import FollowRequestsScreen from "./components/FollowRequestScreen.jsx";
+import PointsWithdrawalScreen from "./components/PointsWithdrawalScreen.jsx";
 
 
 
@@ -125,6 +126,9 @@ const App = () => {
           <Route path="/add-friends" element={<ProtectedRoute><AddFriendsScreen /></ProtectedRoute>} />
 
           <Route path="/recharge-points" element={<ProtectedRoute><PointsRechargeScreen /></ProtectedRoute>} />
+
+          <Route path="/withdraw-points" element={<ProtectedRoute>< PointsWithdrawalScreen /></ProtectedRoute>} />
+         
 
 
           <Route path="/messaging" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />

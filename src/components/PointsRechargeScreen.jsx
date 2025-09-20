@@ -1,41 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, DollarSign, Star, Gift, History, CheckCircle, XCircle, Clock, User, Mail, Phone, MapPin, Calendar, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, CreditCard, DollarSign, Star, Gift, History, CheckCircle, XCircle, Clock, User, Mail, Phone, MapPin, Calendar, Lock } from 'lucide-react';
 
 const PointsRechargeScreen = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('recharge');
   const [pointsBalance, setPointsBalance] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
+  const [recharging, setRecharging] = useState(false);
   const [history, setHistory] = useState([]);
-  const [packages, setPackages] = useState([]);
-  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [selectedAmount, setSelectedAmount] = useState(null);
   const [customAmount, setCustomAmount] = useState('');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('stripe');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('card');
   const [showCheckout, setShowCheckout] = useState(false);
-  const [currentTransaction, setCurrentTransaction] = useState(null);
-  const [paymentData, setPaymentData] = useState(null);
-  const [error, setError] = useState('');
-  
   const [paymentDetails, setPaymentDetails] = useState({
+    // User Details
     fullName: '',
     email: '',
     phone: '',
+    
+    // Billing Address
     address: '',
     city: '',
     state: '',
     zipCode: '',
     country: '',
+    
+    // Card Details (for card payments)
     cardNumber: '',
     expiryDate: '',
     cvv: '',
     cardholderName: '',
+    
+    // PayPal Details
     paypalEmail: '',
+    
+    // Bank Details
     bankName: '',
     accountNumber: '',
     routingNumber: '',
     accountType: 'checking'
   });
-  
   const [validationErrors, setValidationErrors] = useState({});
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
@@ -48,96 +51,48 @@ const PointsRechargeScreen = ({ onBack }) => {
     };
   };
 
+  // Predefined recharge amounts (in dollars)
+  const rechargeOptions = [
+    { amount: 5, points: 50, popular: false, bonus: 0 },
+    { amount: 10, points: 100, popular: true, bonus: 10 },
+    { amount: 25, points: 250, popular: false, bonus: 50 },
+    { amount: 50, points: 500, popular: false, bonus: 150 },
+    { amount: 100, points: 1000, popular: false, bonus: 400 },
+  ];
+
   const paymentMethods = [
-    { 
-      id: 'stripe', 
-      name: 'Credit/Debit Card', 
-      icon: CreditCard,
-      description: 'Visa, Mastercard, American Express',
-      fees: '2.9% + $0.30'
-    },
-    { 
-      id: 'paypal', 
-      name: 'PayPal', 
-      icon: DollarSign,
-      description: 'Pay with your PayPal account',
-      fees: '2.9% + $0.30'
-    },
-    { 
-      id: 'apple', 
-      name: 'Apple Pay', 
-      icon: Star,
-      description: 'Quick and secure',
-      fees: '2.9% + $0.30'
-    },
-    { 
-      id: 'bank', 
-      name: 'Bank Transfer', 
-      icon: Gift,
-      description: 'Direct bank transfer',
-      fees: '$0.50 flat fee'
-    }
+    { id: 'card', name: 'Credit/Debit Card', icon: CreditCard },
+    { id: 'paypal', name: 'PayPal', icon: DollarSign },
+    { id: 'apple', name: 'Apple Pay', icon: Star },
+    { id: 'bank', name: 'Bank Transfer', icon: Gift },
   ];
 
   // Fetch points balance
   const fetchPointsBalance = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/points/balance`, {
+      const response = await fetch(`${API_BASE_URL}/users/points/balance`, {
         headers: getAuthHeaders()
       });
 
       if (response.ok) {
         const data = await response.json();
-        setPointsBalance(data.balance || 0);
+        setPointsBalance(data.balance);
       }
     } catch (error) {
       console.error('Error fetching points balance:', error);
     }
   };
 
-  // Fetch recharge packages
-  const fetchPackages = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/payment/packages`, {
-        headers: getAuthHeaders()
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPackages(data);
-      } else {
-        // Fallback to default packages if API fails
-        setPackages([
-          { _id: '1', amount: 5, points: 50, bonusPoints: 0, name: 'Starter Pack', isPopular: false },
-          { _id: '2', amount: 10, points: 100, bonusPoints: 10, name: 'Popular Pack', isPopular: true },
-          { _id: '3', amount: 25, points: 250, bonusPoints: 50, name: 'Value Pack', isPopular: false },
-          { _id: '4', amount: 50, points: 500, bonusPoints: 150, name: 'Power Pack', isPopular: false },
-          { _id: '5', amount: 100, points: 1000, bonusPoints: 400, name: 'Premium Pack', isPopular: false },
-        ]);
-      }
-    } catch (error) {
-      console.error('Error fetching packages:', error);
-      // Use fallback packages
-      setPackages([
-        { _id: '1', amount: 5, points: 50, bonusPoints: 0, name: 'Starter Pack', isPopular: false },
-        { _id: '2', amount: 10, points: 100, bonusPoints: 10, name: 'Popular Pack', isPopular: true },
-        { _id: '3', amount: 25, points: 250, bonusPoints: 50, name: 'Value Pack', isPopular: false },
-        { _id: '4', amount: 50, points: 500, bonusPoints: 150, name: 'Power Pack', isPopular: false },
-        { _id: '5', amount: 100, points: 1000, bonusPoints: 400, name: 'Premium Pack', isPopular: false },
-      ]);
-    }
-  };
-
   // Fetch points history
   const fetchPointsHistory = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/points/history`, {
+      const response = await fetch(`${API_BASE_URL}/users/points/history`, {
         headers: getAuthHeaders()
       });
 
       if (response.ok) {
         const data = await response.json();
-        setHistory(data.history || []);
+        setHistory(data.history);
       }
     } catch (error) {
       console.error('Error fetching points history:', error);
@@ -149,7 +104,6 @@ const PointsRechargeScreen = ({ onBack }) => {
       setLoading(true);
       await Promise.all([
         fetchPointsBalance(),
-        fetchPackages(),
         fetchPointsHistory()
       ]);
       setLoading(false);
@@ -158,34 +112,17 @@ const PointsRechargeScreen = ({ onBack }) => {
     loadData();
   }, []);
 
-  const calculatePoints = (amount, pkg = null) => {
-    if (pkg) {
-      return {
-        basePoints: pkg.points,
-        bonusPoints: pkg.bonusPoints || 0,
-        totalPoints: pkg.points + (pkg.bonusPoints || 0)
-      };
-    }
-    
-    // Custom amount calculation
+  const calculatePoints = (amount) => {
     const basePoints = amount * 10; // 1 dollar = 10 points
-    let bonusPoints = 0;
-    
-    if (amount >= 100) bonusPoints = amount * 4;
-    else if (amount >= 50) bonusPoints = amount * 3;
-    else if (amount >= 25) bonusPoints = amount * 2;
-    else if (amount >= 10) bonusPoints = amount * 1;
-    
-    return {
-      basePoints,
-      bonusPoints,
-      totalPoints: basePoints + bonusPoints
-    };
+    const option = rechargeOptions.find(opt => opt.amount === amount);
+    const bonus = option?.bonus || 0;
+    return basePoints + bonus;
   };
 
   const validateForm = () => {
     const errors = {};
     
+    // Common validations
     if (!paymentDetails.fullName.trim()) {
       errors.fullName = 'Full name is required';
     }
@@ -200,7 +137,8 @@ const PointsRechargeScreen = ({ onBack }) => {
       errors.phone = 'Phone number is required';
     }
 
-    if (selectedPaymentMethod === 'stripe') {
+    // Payment method specific validations
+    if (selectedPaymentMethod === 'card') {
       if (!paymentDetails.cardNumber.trim()) {
         errors.cardNumber = 'Card number is required';
       }
@@ -213,9 +151,22 @@ const PointsRechargeScreen = ({ onBack }) => {
       if (!paymentDetails.cardholderName.trim()) {
         errors.cardholderName = 'Cardholder name is required';
       }
+      
+      // Address for card payments
+      if (!paymentDetails.address.trim()) {
+        errors.address = 'Billing address is required';
+      }
+      if (!paymentDetails.city.trim()) {
+        errors.city = 'City is required';
+      }
+      if (!paymentDetails.zipCode.trim()) {
+        errors.zipCode = 'ZIP code is required';
+      }
     } else if (selectedPaymentMethod === 'paypal') {
       if (!paymentDetails.paypalEmail.trim()) {
         errors.paypalEmail = 'PayPal email is required';
+      } else if (!/\S+@\S+\.\S+/.test(paymentDetails.paypalEmail)) {
+        errors.paypalEmail = 'Please enter a valid PayPal email';
       }
     } else if (selectedPaymentMethod === 'bank') {
       if (!paymentDetails.bankName.trim()) {
@@ -223,6 +174,9 @@ const PointsRechargeScreen = ({ onBack }) => {
       }
       if (!paymentDetails.accountNumber.trim()) {
         errors.accountNumber = 'Account number is required';
+      }
+      if (!paymentDetails.routingNumber.trim()) {
+        errors.routingNumber = 'Routing number is required';
       }
     }
 
@@ -232,10 +186,11 @@ const PointsRechargeScreen = ({ onBack }) => {
 
   const handleInputChange = (field, value) => {
     setPaymentDetails(prev => ({ ...prev, [field]: value }));
+    
+    // Clear validation error when user starts typing
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: '' }));
     }
-    if (error) setError('');
   };
 
   const formatCardNumber = (value) => {
@@ -246,7 +201,11 @@ const PointsRechargeScreen = ({ onBack }) => {
     for (let i = 0, len = match.length; i < len; i += 4) {
       parts.push(match.substring(i, i + 4));
     }
-    return parts.length ? parts.join(' ') : v;
+    if (parts.length) {
+      return parts.join(' ');
+    } else {
+      return v;
+    }
   };
 
   const formatExpiryDate = (value) => {
@@ -258,158 +217,60 @@ const PointsRechargeScreen = ({ onBack }) => {
   };
 
   const proceedToCheckout = () => {
-    const amount = selectedPackage?.amount || parseFloat(customAmount);
+    const amount = selectedAmount || parseFloat(customAmount);
     
     if (!amount || amount <= 0) {
-      setError('Please select or enter a valid amount');
+      alert('Please select or enter a valid amount');
       return;
     }
 
     if (amount < 1) {
-      setError('Minimum recharge amount is $1');
+      alert('Minimum recharge amount is $1');
       return;
     }
 
-    if (amount > 1000) {
-      setError('Maximum recharge amount is $1000');
+    if (amount > 500) {
+      alert('Maximum recharge amount is $500');
       return;
     }
 
-    setError('');
     setShowCheckout(true);
   };
 
-  const initializePayment = async () => {
+  const handleRecharge = async () => {
     if (!validateForm()) {
-      setError('Please fill in all required fields correctly');
+      alert('Please fill in all required fields correctly');
       return;
     }
 
-    setProcessing(true);
-    setError('');
+    const amount = selectedAmount || parseFloat(customAmount);
+    setRecharging(true);
 
     try {
-      const amount = selectedPackage?.amount || parseFloat(customAmount);
-      
-      const response = await fetch(`${API_BASE_URL}/payment/initialize`, {
+      // Simulate payment processing delay
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      const response = await fetch(`${API_BASE_URL}/users/points/recharge`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           amount,
-          packageId: selectedPackage?._id,
           paymentMethod: selectedPaymentMethod,
-          userInfo: {
-            fullName: paymentDetails.fullName,
-            email: paymentDetails.email,
-            phone: paymentDetails.phone,
-            address: selectedPaymentMethod === 'stripe' ? {
-              street: paymentDetails.address,
-              city: paymentDetails.city,
-              state: paymentDetails.state,
-              zipCode: paymentDetails.zipCode,
-              country: paymentDetails.country || 'US'
-            } : null
-          }
+          paymentDetails: paymentDetails,
+          transactionId: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         })
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setCurrentTransaction(data.transaction);
-        setPaymentData(data.paymentData);
-        
-        // Handle different payment methods
-        if (selectedPaymentMethod === 'stripe') {
-          await handleStripePayment(data.paymentData);
-        } else if (selectedPaymentMethod === 'paypal') {
-          await handlePayPalPayment(data.paymentData);
-        } else {
-          // For other methods, show confirmation
-          await confirmPayment(data.transaction.id, { confirmed: true });
-        }
-      } else {
-        setError(data.msg || 'Payment initialization failed');
-      }
-    } catch (error) {
-      console.error('Payment initialization error:', error);
-      setError('Payment initialization failed. Please try again.');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleStripePayment = async (paymentData) => {
-    try {
-      // In a real implementation, you would use Stripe.js here
-      // For demo purposes, we'll simulate the payment flow
-      
-      // Simulate payment processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful payment
-      const mockPaymentResult = {
-        paymentIntent: {
-          status: 'succeeded',
-          id: paymentData.paymentIntentId
-        }
-      };
-      
-      if (mockPaymentResult.paymentIntent.status === 'succeeded') {
-        await confirmPayment(currentTransaction.id, {
-          paymentIntentId: mockPaymentResult.paymentIntent.id,
-          status: 'succeeded'
-        });
-      } else {
-        throw new Error('Payment failed');
-      }
-    } catch (error) {
-      console.error('Stripe payment error:', error);
-      setError('Payment failed. Please try again.');
-    }
-  };
-
-  const handlePayPalPayment = async (paymentData) => {
-    try {
-      // In a real implementation, you would integrate with PayPal SDK
-      // For demo purposes, we'll simulate the payment flow
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful PayPal payment
-      await confirmPayment(currentTransaction.id, {
-        paymentID: 'PAYPAL_PAYMENT_ID',
-        payerID: 'PAYPAL_PAYER_ID'
-      });
-    } catch (error) {
-      console.error('PayPal payment error:', error);
-      setError('PayPal payment failed. Please try again.');
-    }
-  };
-
-  const confirmPayment = async (transactionId, paymentData) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/payment/confirm`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          transactionId,
-          paymentData
-        })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Payment successful
-        setPointsBalance(data.transaction.newBalance);
+        setPointsBalance(data.newBalance);
+        alert(`Successfully recharged ${data.pointsAdded} points!`);
         
         // Reset form
-        setSelectedPackage(null);
+        setSelectedAmount(null);
         setCustomAmount('');
         setShowCheckout(false);
-        setCurrentTransaction(null);
-        setPaymentData(null);
         setPaymentDetails({
           fullName: '',
           email: '',
@@ -431,18 +292,19 @@ const PointsRechargeScreen = ({ onBack }) => {
         });
         setValidationErrors({});
         
-        // Refresh history and show success
-        await fetchPointsHistory();
-        setActiveTab('history');
+        // Refresh history
+        fetchPointsHistory();
         
-        // Show success message
-        alert(`Successfully recharged ${data.transaction.pointsAdded} points!`);
+        // Switch to history tab to show the transaction
+        setActiveTab('history');
       } else {
-        setError(data.msg || 'Payment confirmation failed');
+        alert(data.msg || 'Recharge failed. Please try again.');
       }
     } catch (error) {
-      console.error('Payment confirmation error:', error);
-      setError('Payment confirmation failed. Please contact support.');
+      console.error('Error during recharge:', error);
+      alert('Recharge failed. Please try again.');
+    } finally {
+      setRecharging(false);
     }
   };
 
@@ -456,14 +318,13 @@ const PointsRechargeScreen = ({ onBack }) => {
     });
   };
 
-  const getTransactionIcon = (category) => {
-    switch (category) {
+  const getTransactionIcon = (type) => {
+    switch (type) {
       case 'recharge':
         return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'gift':
-      case 'boost':
+      case 'spend':
         return <XCircle className="w-5 h-5 text-red-400" />;
-      case 'reward':
+      case 'award':
         return <Gift className="w-5 h-5 text-yellow-400" />;
       default:
         return <Clock className="w-5 h-5 text-gray-400" />;
@@ -471,14 +332,22 @@ const PointsRechargeScreen = ({ onBack }) => {
   };
 
   const getTransactionColor = (type) => {
-    return type === 'credit' ? 'text-green-400' : 'text-red-400';
+    switch (type) {
+      case 'recharge':
+      case 'award':
+        return 'text-green-400';
+      case 'spend':
+        return 'text-red-400';
+      default:
+        return 'text-gray-400';
+    }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-pink-500" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mx-auto mb-4"></div>
           <p className="text-gray-400">Loading points data...</p>
         </div>
       </div>
@@ -486,9 +355,6 @@ const PointsRechargeScreen = ({ onBack }) => {
   }
 
   if (showCheckout) {
-    const amount = selectedPackage?.amount || parseFloat(customAmount);
-    const pointsCalc = calculatePoints(amount, selectedPackage);
-    
     return (
       <div className="min-h-screen bg-black text-white">
         {/* Checkout Header */}
@@ -504,51 +370,34 @@ const PointsRechargeScreen = ({ onBack }) => {
               <h1 className="text-xl font-bold">Payment Details</h1>
             </div>
             <div className="text-right">
-              <div className="text-lg font-bold text-yellow-400">${amount}</div>
+              <div className="text-lg font-bold text-yellow-400">
+                ${selectedAmount || customAmount}
+              </div>
               <p className="text-xs text-gray-400">
-                {pointsCalc.totalPoints.toLocaleString()} points
+                {calculatePoints(selectedAmount || parseFloat(customAmount)).toLocaleString()} points
               </p>
             </div>
           </div>
         </div>
 
         <div className="p-4 max-w-md mx-auto">
-          {error && (
-            <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-4 flex items-center space-x-2">
-              <AlertCircle className="w-5 h-5 text-red-400" />
-              <p className="text-red-400">{error}</p>
-            </div>
-          )}
-
           {/* Order Summary */}
           <div className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl p-6 mb-6">
             <div className="text-center text-white">
               <h3 className="text-lg font-bold mb-2">Order Summary</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span>Amount:</span>
-                  <span className="font-bold">${amount}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Base Points:</span>
-                  <span className="font-bold text-yellow-300">{pointsCalc.basePoints.toLocaleString()}</span>
-                </div>
-                {pointsCalc.bonusPoints > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span>Bonus Points:</span>
-                    <span className="font-bold text-green-300">+{pointsCalc.bonusPoints.toLocaleString()}</span>
-                  </div>
-                )}
-                <div className="border-t border-purple-300/30 pt-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold">Total Points:</span>
-                    <span className="font-bold text-xl text-yellow-300">{pointsCalc.totalPoints.toLocaleString()}</span>
-                  </div>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span>Payment Method:</span>
-                  <span className="font-bold capitalize">{paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name}</span>
-                </div>
+              <div className="flex justify-between items-center mb-2">
+                <span>Amount:</span>
+                <span className="font-bold">${selectedAmount || customAmount}</span>
+              </div>
+              <div className="flex justify-between items-center mb-2">
+                <span>Points:</span>
+                <span className="font-bold text-yellow-300">
+                  {calculatePoints(selectedAmount || parseFloat(customAmount)).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Payment Method:</span>
+                <span className="font-bold capitalize">{selectedPaymentMethod}</span>
               </div>
             </div>
           </div>
@@ -611,7 +460,7 @@ const PointsRechargeScreen = ({ onBack }) => {
             </div>
 
             {/* Payment Method Specific Fields */}
-            {selectedPaymentMethod === 'stripe' && (
+            {selectedPaymentMethod === 'card' && (
               <div className="bg-gray-900 rounded-xl p-4">
                 <h3 className="text-lg font-semibold mb-4 flex items-center">
                   <CreditCard className="w-5 h-5 mr-2" />
@@ -682,6 +531,77 @@ const PointsRechargeScreen = ({ onBack }) => {
                     </div>
                   </div>
                 </div>
+
+                {/* Billing Address */}
+                <h4 className="text-md font-semibold mt-6 mb-4 flex items-center">
+                  <MapPin className="w-4 h-4 mr-2" />
+                  Billing Address
+                </h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Street Address"
+                      value={paymentDetails.address}
+                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
+                        validationErrors.address ? 'border-red-500' : 'border-gray-700'
+                      }`}
+                    />
+                    {validationErrors.address && (
+                      <p className="text-red-400 text-sm mt-1">{validationErrors.address}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="City"
+                        value={paymentDetails.city}
+                        onChange={(e) => handleInputChange('city', e.target.value)}
+                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
+                          validationErrors.city ? 'border-red-500' : 'border-gray-700'
+                        }`}
+                      />
+                      {validationErrors.city && (
+                        <p className="text-red-400 text-sm mt-1">{validationErrors.city}</p>
+                      )}
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="ZIP Code"
+                        value={paymentDetails.zipCode}
+                        onChange={(e) => handleInputChange('zipCode', e.target.value)}
+                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
+                          validationErrors.zipCode ? 'border-red-500' : 'border-gray-700'
+                        }`}
+                      />
+                      {validationErrors.zipCode && (
+                        <p className="text-red-400 text-sm mt-1">{validationErrors.zipCode}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      placeholder="State/Province"
+                      value={paymentDetails.state}
+                      onChange={(e) => handleInputChange('state', e.target.value)}
+                      className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Country"
+                      value={paymentDetails.country}
+                      onChange={(e) => handleInputChange('country', e.target.value)}
+                      className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -746,25 +666,49 @@ const PointsRechargeScreen = ({ onBack }) => {
                       <p className="text-red-400 text-sm mt-1">{validationErrors.accountNumber}</p>
                     )}
                   </div>
+
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Routing Number"
+                      value={paymentDetails.routingNumber}
+                      onChange={(e) => handleInputChange('routingNumber', e.target.value)}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
+                        validationErrors.routingNumber ? 'border-red-500' : 'border-gray-700'
+                      }`}
+                    />
+                    {validationErrors.routingNumber && (
+                      <p className="text-red-400 text-sm mt-1">{validationErrors.routingNumber}</p>
+                    )}
+                  </div>
+
+                  <select
+                    value={paymentDetails.accountType}
+                    onChange={(e) => handleInputChange('accountType', e.target.value)}
+                    className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  >
+                    <option value="checking">Checking Account</option>
+                    <option value="savings">Savings Account</option>
+                  </select>
                 </div>
               </div>
             )}
 
             {/* Complete Payment Button */}
             <button
-              onClick={initializePayment}
-              disabled={processing}
+              onClick={handleRecharge}
+              disabled={recharging}
               className="w-full py-4 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:from-pink-700 hover:to-purple-700 transition-all"
             >
-              {processing ? (
+              {recharging ? (
                 <div className="flex items-center justify-center space-x-2">
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   <span>Processing Payment...</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center space-x-2">
                   <Lock className="w-5 h-5" />
-                  <span>Complete Payment - ${amount}</span>
+                  <span>Complete Payment - ${selectedAmount || customAmount}</span>
                 </div>
               )}
             </button>
@@ -821,13 +765,6 @@ const PointsRechargeScreen = ({ onBack }) => {
           </div>
         </div>
 
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-4 flex items-center space-x-2">
-            <AlertCircle className="w-5 h-5 text-red-400" />
-            <p className="text-red-400">{error}</p>
-          </div>
-        )}
-
         {/* Tabs */}
         <div className="flex bg-gray-900 rounded-lg p-1 mb-6">
           <button
@@ -857,56 +794,51 @@ const PointsRechargeScreen = ({ onBack }) => {
         {/* Recharge Tab */}
         {activeTab === 'recharge' && (
           <div className="space-y-6">
-            {/* Preset Packages */}
+            {/* Preset Amounts */}
             <div>
-              <h3 className="text-lg font-semibold mb-4">Select Package</h3>
+              <h3 className="text-lg font-semibold mb-4">Select Amount</h3>
               <div className="grid grid-cols-1 gap-3">
-                {packages.map((pkg) => {
-                  const pointsCalc = calculatePoints(pkg.amount, pkg);
-                  return (
-                    <button
-                      key={pkg._id}
-                      onClick={() => {
-                        setSelectedPackage(pkg);
-                        setCustomAmount('');
-                        setError('');
-                      }}
-                      className={`relative p-4 rounded-xl border-2 transition-all ${
-                        selectedPackage?._id === pkg._id
-                          ? 'border-pink-500 bg-pink-600/20'
-                          : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="text-left">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xl font-bold">${pkg.amount}</span>
-                            {pkg.isPopular && (
-                              <span className="bg-yellow-400 text-black text-xs px-2 py-1 rounded-full font-medium">
-                                Popular
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-1 mt-1">
-                            <Star className="w-4 h-4 text-yellow-400" />
-                            <span className="text-yellow-400 font-medium">
-                              {pointsCalc.totalPoints.toLocaleString()} points
+                {rechargeOptions.map((option) => (
+                  <button
+                    key={option.amount}
+                    onClick={() => {
+                      setSelectedAmount(option.amount);
+                      setCustomAmount('');
+                    }}
+                    className={`relative p-4 rounded-xl border-2 transition-all ${
+                      selectedAmount === option.amount
+                        ? 'border-pink-500 bg-pink-600/20'
+                        : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-left">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xl font-bold">${option.amount}</span>
+                          {option.popular && (
+                            <span className="bg-yellow-400 text-black text-xs px-2 py-1 rounded-full font-medium">
+                              Popular
                             </span>
-                            {pointsCalc.bonusPoints > 0 && (
-                              <span className="text-green-400 text-sm">
-                                (+{pointsCalc.bonusPoints.toLocaleString()} bonus)
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-400 mt-1">{pkg.name}</p>
+                          )}
                         </div>
-                        {selectedPackage?._id === pkg._id && (
-                          <CheckCircle className="w-6 h-6 text-pink-500" />
-                        )}
+                        <div className="flex items-center space-x-1 mt-1">
+                          <Star className="w-4 h-4 text-yellow-400" />
+                          <span className="text-yellow-400 font-medium">
+                            {(option.points + option.bonus).toLocaleString()} points
+                          </span>
+                          {option.bonus > 0 && (
+                            <span className="text-green-400 text-sm">
+                              (+{option.bonus} bonus)
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </button>
-                  );
-                })}
+                      {selectedAmount === option.amount && (
+                        <CheckCircle className="w-6 h-6 text-pink-500" />
+                      )}
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -918,28 +850,22 @@ const PointsRechargeScreen = ({ onBack }) => {
                 <input
                   type="number"
                   min="1"
-                  max="1000"
+                  max="500"
                   value={customAmount}
                   onChange={(e) => {
                     setCustomAmount(e.target.value);
-                    setSelectedPackage(null);
-                    setError('');
+                    setSelectedAmount(null);
                   }}
                   className="w-full pl-8 pr-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                  placeholder="Enter amount (1-1000)"
+                  placeholder="Enter amount (1-500)"
                 />
               </div>
-              {customAmount && parseFloat(customAmount) > 0 && (
+              {customAmount && (
                 <div className="mt-2 flex items-center space-x-1 text-sm">
                   <Star className="w-4 h-4 text-yellow-400" />
                   <span className="text-yellow-400">
-                    You'll get {calculatePoints(parseFloat(customAmount)).totalPoints.toLocaleString()} points
+                    You'll get {calculatePoints(parseFloat(customAmount)).toLocaleString()} points
                   </span>
-                  {calculatePoints(parseFloat(customAmount)).bonusPoints > 0 && (
-                    <span className="text-green-400">
-                      ({calculatePoints(parseFloat(customAmount)).bonusPoints.toLocaleString()} bonus)
-                    </span>
-                  )}
                 </div>
               )}
             </div>
@@ -947,32 +873,22 @@ const PointsRechargeScreen = ({ onBack }) => {
             {/* Payment Methods */}
             <div>
               <h3 className="text-lg font-semibold mb-4">Payment Method</h3>
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {paymentMethods.map((method) => {
                   const IconComponent = method.icon;
                   return (
                     <button
                       key={method.id}
-                      onClick={() => {
-                        setSelectedPaymentMethod(method.id);
-                        setError('');
-                      }}
+                      onClick={() => setSelectedPaymentMethod(method.id)}
                       className={`p-4 rounded-lg border-2 transition-all ${
                         selectedPaymentMethod === method.id
                           ? 'border-pink-500 bg-pink-600/20'
                           : 'border-gray-700 bg-gray-900 hover:border-gray-600'
                       }`}
                     >
-                      <div className="flex items-center space-x-3">
+                      <div className="flex flex-col items-center space-y-2">
                         <IconComponent className="w-6 h-6" />
-                        <div className="text-left flex-1">
-                          <div className="font-medium">{method.name}</div>
-                          <div className="text-sm text-gray-400">{method.description}</div>
-                          <div className="text-xs text-gray-500">Fee: {method.fees}</div>
-                        </div>
-                        {selectedPaymentMethod === method.id && (
-                          <CheckCircle className="w-5 h-5 text-pink-500" />
-                        )}
+                        <span className="text-sm font-medium">{method.name}</span>
                       </div>
                     </button>
                   );
@@ -983,13 +899,13 @@ const PointsRechargeScreen = ({ onBack }) => {
             {/* Proceed to Checkout Button */}
             <button
               onClick={proceedToCheckout}
-              disabled={!selectedPackage && !customAmount}
+              disabled={!selectedAmount && !customAmount}
               className="w-full py-4 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:from-pink-700 hover:to-purple-700 transition-all"
             >
               <div className="flex items-center justify-center space-x-2">
                 <CreditCard className="w-5 h-5" />
                 <span>
-                  Proceed to Checkout - ${selectedPackage?.amount || customAmount || '0'}
+                  Proceed to Checkout - ${selectedAmount || customAmount || '0'}
                 </span>
               </div>
             </button>
@@ -1003,16 +919,6 @@ const PointsRechargeScreen = ({ onBack }) => {
                 <li>• Access premium features and filters</li>
                 <li>• Support your favorite content creators</li>
               </ul>
-              
-              <div className="mt-4 pt-4 border-t border-gray-700">
-                <h5 className="font-medium mb-2 text-pink-400">Security & Privacy</h5>
-                <ul className="text-xs text-gray-500 space-y-1">
-                  <li>• All payments are processed through secure, encrypted connections</li>
-                  <li>• We never store your card details on our servers</li>
-                  <li>• All transactions are monitored for fraud protection</li>
-                  <li>• Refunds available within 24 hours of purchase</li>
-                </ul>
-              </div>
             </div>
           </div>
         )}
@@ -1030,12 +936,12 @@ const PointsRechargeScreen = ({ onBack }) => {
               <div className="space-y-3">
                 {history.map((transaction) => (
                   <div
-                    key={transaction._id}
+                    key={transaction._id || `${transaction.type}-${transaction.createdAt}`}
                     className="bg-gray-900 rounded-lg p-4"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        {getTransactionIcon(transaction.category)}
+                        {getTransactionIcon(transaction.type)}
                         <div>
                           <p className="font-medium">{transaction.description}</p>
                           <p className="text-sm text-gray-400">
@@ -1046,21 +952,13 @@ const PointsRechargeScreen = ({ onBack }) => {
                               ID: {transaction.transactionId}
                             </p>
                           )}
-                          {transaction.metadata?.relatedTransaction && (
-                            <p className="text-xs text-blue-400 mt-1">
-                              Payment ID: {transaction.metadata.relatedTransaction.transactionId}
-                            </p>
-                          )}
                         </div>
                       </div>
                       <div className="text-right">
                         <p className={`font-bold text-lg ${getTransactionColor(transaction.type)}`}>
-                          {transaction.amount > 0 ? '+' : ''}{Math.abs(transaction.amount).toLocaleString()}
+                          {transaction.amount > 0 ? '+' : ''}{transaction.amount}
                         </p>
                         <p className="text-xs text-gray-400">points</p>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Balance: {transaction.balanceAfter.toLocaleString()}
-                        </div>
                       </div>
                     </div>
                   </div>
