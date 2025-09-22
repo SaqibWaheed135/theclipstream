@@ -13,27 +13,27 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
-  
+
   // Delete message modal state
   const [deleteModal, setDeleteModal] = useState({
     show: false,
     message: null,
     canDeleteForEveryone: false
   });
-  
+
   // Media modal and upload state
   const [mediaModal, setMediaModal] = useState({ show: false, files: [] });
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
-  
+
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const API_BASE_URL = 'http://localhost:3000/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -62,7 +62,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     socketRef.current.on('new-message', (data) => {
       const { message, conversation } = data;
-      
+
       // Update messages if it's for current conversation
       if (selectedConversation && message.conversation === selectedConversation._id) {
         setMessages(prev => [...prev, message]);
@@ -70,8 +70,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       }
 
       // Update conversation list
-      setConversations(prev => prev.map(conv => 
-        conv._id === conversation._id 
+      setConversations(prev => prev.map(conv =>
+        conv._id === conversation._id
           ? { ...conv, lastMessage: message, updatedAt: new Date() }
           : conv
       ));
@@ -93,8 +93,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     socketRef.current.on('message-deleted-everyone', (data) => {
       const { messageId } = data;
-      setMessages(prev => prev.map(msg => 
-        msg._id === messageId 
+      setMessages(prev => prev.map(msg =>
+        msg._id === messageId
           ? { ...msg, isDeleted: true, content: 'This message was deleted' }
           : msg
       ));
@@ -166,7 +166,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const selectConversation = async (conversation) => {
     setSelectedConversation(conversation);
     setMessages([]);
-    
+
     // Join conversation room
     if (socketRef.current) {
       socketRef.current.emit('join-conversation', { conversationId: conversation._id });
@@ -189,14 +189,14 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   const sendMessage = async (e, messageData = null) => {
     e?.preventDefault();
-    
+
     const content = messageData?.content || newMessage.trim();
     const type = messageData?.type || 'text';
     const fileUrl = messageData?.fileUrl;
     const fileSize = messageData?.fileSize;
     const fileName = messageData?.fileName;
     const key = messageData?.key;
-    
+
     if ((type === 'text' && !content) || !selectedConversation || sending) return;
 
     setSending(true);
@@ -206,11 +206,11 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       const response = await fetch(`${API_BASE_URL}/messages/conversations/${selectedConversation._id}/messages`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ 
-          content, 
-          type, 
-          fileUrl, 
-          fileSize, 
+        body: JSON.stringify({
+          content,
+          type,
+          fileUrl,
+          fileSize,
           fileName,
           key // Include the Wasabi key
         })
@@ -280,81 +280,81 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     setDragActive(false);
   };
 
- const uploadFiles = async () => {
-  if (!mediaModal.files.length) return;
+  const uploadFiles = async () => {
+    if (!mediaModal.files.length) return;
 
-  setUploading(true);
-  setUploadProgress(0);
-
-  try {
-    const token = localStorage.getItem('token');
-    const totalFiles = mediaModal.files.length;
-
-    for (let i = 0; i < totalFiles; i++) {
-      const file = mediaModal.files[i];
-
-      // Update progress
-      setUploadProgress(Math.round((i / totalFiles) * 100));
-
-      // 1️⃣ Get signed upload URL from backend
-      const signedUrlResponse = await fetch(`${API_BASE_URL}/messages/media/signed-url`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type,
-        })
-      });
-
-      if (!signedUrlResponse.ok) {
-        throw new Error('Failed to get signed URL');
-      }
-
-      const { uploadUrl, fileUrl, key } = await signedUrlResponse.json();
-
-      // 2️⃣ Upload file to Wasabi
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Failed to upload ${file.name}`);
-      }
-
-      // 3️⃣ Detect type (image/video/audio/file)
-      let messageType = 'file';
-      if (file.type.startsWith('image/')) messageType = 'image';
-      else if (file.type.startsWith('video/')) messageType = 'video';
-      else if (file.type.startsWith('audio/')) messageType = 'audio';
-
-      // 4️⃣ Send chat message with file info
-      await sendMessage(null, {
-        type: messageType,
-        fileUrl,       // ✅ from backend
-        fileSize: file.size,
-        fileName: file.name,
-        content: file.name,
-        key            // ✅ store Wasabi key for reference
-      });
-
-      setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
-    }
-
-    alert('✅ Files uploaded successfully!');
-  } catch (error) {
-    console.error('Upload error:', error);
-    alert('❌ Failed to upload files: ' + error.message);
-  } finally {
-    setUploading(false);
+    setUploading(true);
     setUploadProgress(0);
-    setMediaModal({ show: false, files: [] });
-  }
-};
+
+    try {
+      const token = localStorage.getItem('token');
+      const totalFiles = mediaModal.files.length;
+
+      for (let i = 0; i < totalFiles; i++) {
+        const file = mediaModal.files[i];
+
+        // Update progress
+        setUploadProgress(Math.round((i / totalFiles) * 100));
+
+        // 1️⃣ Get signed upload URL from backend
+        const signedUrlResponse = await fetch(`${API_BASE_URL}/messages/media/signed-url`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fileName: file.name,
+            fileType: file.type,
+          })
+        });
+
+        if (!signedUrlResponse.ok) {
+          throw new Error('Failed to get signed URL');
+        }
+
+        const { uploadUrl, fileUrl, key } = await signedUrlResponse.json();
+
+        // 2️⃣ Upload file to Wasabi
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Failed to upload ${file.name}`);
+        }
+
+        // 3️⃣ Detect type (image/video/audio/file)
+        let messageType = 'file';
+        if (file.type.startsWith('image/')) messageType = 'image';
+        else if (file.type.startsWith('video/')) messageType = 'video';
+        else if (file.type.startsWith('audio/')) messageType = 'audio';
+
+        // 4️⃣ Send chat message with file info
+        await sendMessage(null, {
+          type: messageType,
+          fileUrl,       // ✅ from backend
+          fileSize: file.size,
+          fileName: file.name,
+          content: file.name,
+          key            // ✅ store Wasabi key for reference
+        });
+
+        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
+      }
+
+      alert('✅ Files uploaded successfully!');
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('❌ Failed to upload files: ' + error.message);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      setMediaModal({ show: false, files: [] });
+    }
+  };
 
 
   // Delete message functions
@@ -371,7 +371,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     if (!deleteModal.message) return;
 
     try {
-      const endpoint = type === 'everyone' 
+      const endpoint = type === 'everyone'
         ? `${API_BASE_URL}/messages/${deleteModal.message._id}/everyone`
         : `${API_BASE_URL}/messages/${deleteModal.message._id}/me`;
 
@@ -382,8 +382,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
       if (response.ok) {
         if (type === 'everyone') {
-          setMessages(prev => prev.map(msg => 
-            msg._id === deleteModal.message._id 
+          setMessages(prev => prev.map(msg =>
+            msg._id === deleteModal.message._id
               ? { ...msg, isDeleted: true, content: 'This message was deleted' }
               : msg
           ));
@@ -501,9 +501,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   <button
                     key={conversation._id}
                     onClick={() => selectConversation(conversation)}
-                    className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${
-                      selectedConversation?._id === conversation._id ? 'bg-gray-800' : ''
-                    }`}
+                    className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${selectedConversation?._id === conversation._id ? 'bg-gray-800' : ''
+                      }`}
                   >
                     <div className="flex items-center space-x-3">
                       <img
@@ -522,7 +521,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                         </div>
                         {conversation.lastMessage && (
                           <p className="text-sm text-gray-400 truncate">
-                            {conversation.lastMessage.sender === currentUser?.id || conversation.lastMessage.sender === currentUser?._id 
+                            {conversation.lastMessage.sender === currentUser?.id || conversation.lastMessage.sender === currentUser?._id
                               ? 'You: ' : ''
                             }
                             {conversation.lastMessage.type !== 'text' ? (
@@ -546,7 +545,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       </div>
 
       {/* Chat Area */}
-      <div 
+      <div
         className={`flex-1 flex flex-col ${selectedConversation ? 'flex' : 'hidden md:flex'}`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -603,7 +602,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                 messages.map((message, index) => {
                   const isOwn = message.sender._id === currentUser?.id || message.sender._id === currentUser?._id;
                   const showAvatar = !isOwn && (index === 0 || messages[index - 1]?.sender._id !== message.sender._id);
-                  
+
                   return (
                     <div
                       key={message._id}
@@ -617,13 +616,12 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                         />
                       )}
                       {!isOwn && !showAvatar && <div className="w-8" />}
-                      
+
                       <div className="relative">
-                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
-                          isOwn 
-                            ? 'bg-pink-600 text-white' 
+                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${isOwn
+                            ? 'bg-pink-600 text-white'
                             : 'bg-gray-800 text-white'
-                        }`}>
+                          }`}>
                           {message.isDeleted ? (
                             <p className="text-sm italic text-gray-400">{message.content}</p>
                           ) : (
@@ -631,22 +629,28 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                               {message.type === 'text' && (
                                 <p className="text-sm">{message.content}</p>
                               )}
-                              
+
                               {message.type === 'image' && (
                                 <div>
-                                  <img 
-                                    src={message.fileUrl} 
+                                  {console.log('Image URL:', message.fileUrl)} // Debug log
+
+                                  <img
+                                    src={message.fileUrl}
                                     alt={message.fileName}
                                     className="max-w-full h-auto rounded-lg mb-2"
+                                    onError={(e) => {
+                                      console.error('Image load error:', e);
+                                      console.log('Failed URL:', message.fileUrl);
+                                    }}
                                   />
                                   {/* {message.content && <p className="text-sm">{message.content}</p>} */}
                                 </div>
                               )}
-                              
+
                               {message.type === 'video' && (
                                 <div>
-                                  <video 
-                                    controls 
+                                  <video
+                                    controls
                                     className="max-w-full h-auto rounded-lg mb-2"
                                   >
                                     <source src={message.fileUrl} type="video/mp4" />
@@ -654,7 +658,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                                   {/* {message.content && <p className="text-sm">{message.content}</p>} */}
                                 </div>
                               )}
-                              
+
                               {['file', 'audio'].includes(message.type) && (
                                 <div className="flex items-center space-x-2 p-2 bg-black bg-opacity-20 rounded-lg">
                                   {getFileIcon(message.type)}
@@ -675,14 +679,13 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                               )}
                             </>
                           )}
-                          
-                          <p className={`text-xs mt-1 ${
-                            isOwn ? 'text-pink-200' : 'text-gray-400'
-                          }`}>
+
+                          <p className={`text-xs mt-1 ${isOwn ? 'text-pink-200' : 'text-gray-400'
+                            }`}>
                             {formatMessageTime(message.createdAt)}
                           </p>
                         </div>
-                        
+
                         {/* Delete button - only show for non-deleted messages */}
                         {!message.isDeleted && (
                           <button
@@ -697,19 +700,19 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   );
                 })
               )}
-              
+
               {/* Typing indicator */}
               {typingUsers.length > 0 && (
                 <div className="flex items-center space-x-2 text-gray-400 text-sm">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                   </div>
                   <span>{typingUsers[0].username} is typing...</span>
                 </div>
               )}
-              
+
               <div ref={messagesEndRef} />
             </div>
 
@@ -724,7 +727,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-                <button 
+                <button
                   onClick={() => fileInputRef.current?.click()}
                   className="p-2 hover:bg-gray-800 rounded-full transition-colors"
                 >
@@ -787,7 +790,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
             <p className="text-gray-400 mb-6">
               Choose how you'd like to delete this message:
             </p>
-            
+
             <div className="space-y-3">
               <button
                 onClick={() => deleteMessage('me')}
@@ -798,7 +801,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   This message will only be deleted from your view
                 </div>
               </button>
-              
+
               {deleteModal.canDeleteForEveryone && (
                 <button
                   onClick={() => deleteMessage('everyone')}
@@ -811,7 +814,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                 </button>
               )}
             </div>
-            
+
             <div className="mt-6 flex justify-end space-x-3">
               <button
                 onClick={() => setDeleteModal({ show: false, message: null, canDeleteForEveryone: false })}
@@ -837,7 +840,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4 mb-6">
               {mediaModal.files.map((file, index) => (
                 <div key={index} className="flex items-center space-x-3 p-3 bg-gray-800 rounded-lg">
@@ -860,12 +863,12 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{file.name}</p>
                     <p className="text-sm text-gray-400">{formatFileSize(file.size)}</p>
                   </div>
-                  
+
                   <button
                     onClick={() => {
                       const newFiles = mediaModal.files.filter((_, i) => i !== index);
@@ -878,7 +881,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                 </div>
               ))}
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <button
                 onClick={() => setMediaModal({ show: false, files: [] })}
@@ -909,7 +912,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
             {uploading && (
               <div className="mt-4">
                 <div className="bg-gray-700 rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-pink-600 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
                   ></div>
