@@ -655,7 +655,7 @@ const SearchScreen = () => {
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
-      <GoogleAd slot="8700754425" />
+      {/* <GoogleAd slot="8700754425" /> */}
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10">
         <div className="p-4">
           {/* Top bar with title, friends button, and notifications */}
