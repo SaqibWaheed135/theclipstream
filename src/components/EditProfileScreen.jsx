@@ -1,24 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Camera, X, Save, User, Mail, Calendar, MapPin, Link, Eye, EyeOff } from 'lucide-react';
 
-// Import the other components (these would be in separate files)
-const PointsRechargeScreen = ({ onBack }) => {
-  // This would be imported from './PointsRechargeScreen'
-  return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center">
-      <div className="text-center">
-        <p className="text-xl">Points Recharge Screen</p>
-        <button 
-          onClick={onBack}
-          className="mt-4 px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700"
-        >
-          Back to Profile
-        </button>
-      </div>
-    </div>
-  );
-};
-
 const EditProfileScreen = ({ onBack }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,7 +62,7 @@ const EditProfileScreen = ({ onBack }) => {
           });
           setAvatarPreview(userData.avatar || '');
         } else {
-          console.error('Failed to fetch user data');
+          console.error('Failed to fetch user data:', response.statusText);
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -183,7 +165,11 @@ const EditProfileScreen = ({ onBack }) => {
     if (formData.dateOfBirth) {
       const dob = new Date(formData.dateOfBirth);
       const today = new Date();
-      const age = today.getFullYear() - dob.getFullYear();
+      let age = today.getFullYear() - dob.getFullYear();
+      const monthDiff = today.getMonth() - dob.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+        age--;
+      }
       
       if (age < 13) {
         newErrors.dateOfBirth = 'You must be at least 13 years old';
@@ -200,6 +186,7 @@ const EditProfileScreen = ({ onBack }) => {
     }
 
     setSaving(true);
+    setErrors({});
 
     try {
       const formDataObj = new FormData();
@@ -302,9 +289,12 @@ const EditProfileScreen = ({ onBack }) => {
           <div className="flex items-center space-x-4">
             <div className="relative">
               <img
-                src={avatarPreview || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.username || 'User')}&background=random&color=fff&size=200&bold=true`}
+                src={avatarPreview || user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.username || 'User')}&background=random&color=fff&size=200&bold=true`}
                 alt="Profile"
                 className="w-20 h-20 rounded-full object-cover border-2 border-gray-700"
+                onError={(e) => {
+                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.username || 'User')}&background=random&color=fff&size=200&bold=true`;
+                }}
               />
               <label
                 htmlFor="avatar-upload"
