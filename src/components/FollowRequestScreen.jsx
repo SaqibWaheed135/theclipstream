@@ -44,7 +44,7 @@ const FollowRequestsScreen = ({ onBack }) => {
   const fetchReceivedRequests = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/follow/requests`, {
+      const response = await fetch(`$s`, {
         headers: getAuthHeaders()
       });
 

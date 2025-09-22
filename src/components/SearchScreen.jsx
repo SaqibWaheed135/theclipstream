@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, Hash, User, Play, Heart, UserCheck, UserPlus, MessageCircle, Shield, Users, Bell, UserMinus } from 'lucide-react';
 import NotificationsScreen from './NotificationsScreen';
 import AddFriendsScreen from './AddFriendScreen';
+import GoogleAd from './GoogleAd';
 
 const SearchScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -654,6 +655,7 @@ const SearchScreen = () => {
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
+      <GoogleAd slot="8700754425" />
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10">
         <div className="p-4">
           {/* Top bar with title, friends button, and notifications */}
