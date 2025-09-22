@@ -6,6 +6,7 @@ import {
   Navigate,
   useLocation, useNavigate
 } from "react-router-dom";
+import AdBanner from "./components/AdBanner.jsx";
 
 
 import { Home, Search, Plus, User, CircleDot } from "lucide-react";
@@ -65,10 +66,10 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
               ) : (
                 <Icon
                   className={`w-6 h-6 mb-1 ${isActive
-                      ? item.id === "live"
-                        ? "text-red-500" // 🔴 red for live
-                        : "text-white"
-                      : "text-gray-400"
+                    ? item.id === "live"
+                      ? "text-red-500" // 🔴 red for live
+                      : "text-white"
+                    : "text-gray-400"
                     }`}
                 />
               )}
@@ -128,7 +129,7 @@ const App = () => {
           <Route path="/recharge-points" element={<ProtectedRoute><PointsRechargeScreen /></ProtectedRoute>} />
 
           <Route path="/withdraw-points" element={<ProtectedRoute>< PointsWithdrawalScreen /></ProtectedRoute>} />
-         
+
 
 
           <Route path="/messaging" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
@@ -141,6 +142,12 @@ const App = () => {
         </Routes>
 
       </main>
+
+      {localStorage.getItem("token") && (
+        <div className="fixed bottom-[60px] left-0 right-0 z-40">
+          <AdBanner />
+        </div>
+      )}
 
       {/* ✅ Show nav only when logged in */}
       {localStorage.getItem("token") && (
