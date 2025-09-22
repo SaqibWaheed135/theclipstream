@@ -619,8 +619,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
                       <div className="relative">
                         <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${isOwn
-                            ? 'bg-pink-600 text-white'
-                            : 'bg-gray-800 text-white'
+                          ? 'bg-pink-600 text-white'
+                          : 'bg-gray-800 text-white'
                           }`}>
                           {message.isDeleted ? (
                             <p className="text-sm italic text-gray-400">{message.content}</p>
@@ -635,7 +635,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                                   {console.log('Image URL:', message.fileUrl)} // Debug log
 
                                   <img
-                                    src={message.fileUrl}
+                                      src={`${API_BASE_URL}/messages/file/${message.key}`} 
+
                                     alt={message.fileName}
                                     className="max-w-full h-auto rounded-lg mb-2"
                                     onError={(e) => {
@@ -653,7 +654,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                                     controls
                                     className="max-w-full h-auto rounded-lg mb-2"
                                   >
-                                    <source src={message.fileUrl} type="video/mp4" />
+                                    <source src={`${API_BASE_URL}/messages/file/${message.key}`} type="video/mp4" />
+
                                   </video>
                                   {/* {message.content && <p className="text-sm">{message.content}</p>} */}
                                 </div>
