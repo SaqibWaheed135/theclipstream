@@ -21,7 +21,10 @@ const HomeScreen = () => {
   const fetchingRef = useRef(false);
   const retryTimeoutRef = useRef(null);
   const containerRef = useRef(null);
-  const intersectionObserver = useRef(null);
+  const scrollTimeoutRef = useRef(null);
+
+  // Preload adjacent videos for smoother experience
+  const PRELOAD_RANGE = 2; // Preload 2 videos before and after current
 
   // Memoized API config
   const API_CONFIG = useMemo(() => ({
@@ -47,62 +50,41 @@ const HomeScreen = () => {
     }
   }, []);
 
-  // Enhanced fetch with better error handling and connection detection
-  const fetchWithRetry = useCallback(async (url, options = {}, retries = 2) => {
-    // Check connection first
-    if (!navigator.onLine) {
-      throw new Error('No internet connection');
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
+  // Optimized fetch function with retry logic
+  const fetchWithRetry = useCallback(async (url, options = {}, retries = 3) => {
     for (let i = 0; i < retries; i++) {
       try {
         const response = await fetch(url, {
           ...options,
-          signal: controller.signal,
           headers: {
             ...API_CONFIG.getHeaders(),
             ...options.headers
           }
         });
         
-        clearTimeout(timeoutId);
-        
         if (!response.ok) {
-          // Handle specific HTTP errors
-          if (response.status === 504 || response.status === 502) {
-            throw new Error('Server temporarily unavailable');
-          }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         return await response.json();
       } catch (error) {
-        clearTimeout(timeoutId);
         console.warn(`Attempt ${i + 1} failed:`, error.message);
-        
-        if (error.name === 'AbortError') {
-          throw new Error('Request timeout - slow connection detected');
-        }
-        
         if (i === retries - 1) throw error;
         
-        // Shorter backoff for free hosting
-        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
       }
     }
   }, [API_CONFIG]);
 
-  // Optimized mock data with smaller, faster-loading videos
+  // Mock data for demo purposes
   const generateMockVideos = useCallback(() => {
     return [
       {
         _id: '1',
-        url: 'https://sample-videos.com/zip/10/mp4/SampleVideo_640x360_1mb.mp4',
-        thumbnail: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400&q=75&auto=format',
-        user: { _id: '1', username: 'johndoe', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&q=75&auto=format' },
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        thumbnail: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400',
+        user: { _id: '1', username: 'johndoe', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150' },
         description: 'Amazing nature documentary clip! 🌟 #nature #wildlife',
         hashtags: ['#nature', '#wildlife', '#amazing'],
         likesCount: 1234,
@@ -113,9 +95,9 @@ const HomeScreen = () => {
       },
       {
         _id: '2',
-        url: 'https://sample-videos.com/zip/10/mp4/SampleVideo_640x360_2mb.mp4',
-        thumbnail: 'https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=400&q=75&auto=format',
-        user: { _id: '2', username: 'janesmth', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&q=75&auto=format' },
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+        thumbnail: 'https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=400',
+        user: { _id: '2', username: 'janesmth', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150' },
         description: 'Creative animation showcase ✨ Follow for more!',
         hashtags: ['#animation', '#creative', '#art'],
         likesCount: 2567,
@@ -123,26 +105,22 @@ const HomeScreen = () => {
         createdAt: new Date(Date.now() - 3600000).toISOString(),
         isLiked: true,
         isSaved: false
+      },
+      {
+        _id: '3',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        thumbnail: 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=400',
+        user: { _id: '3', username: 'mikech', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
+        description: 'Epic action sequence! What do you think? 🔥',
+        hashtags: ['#action', '#epic', '#fire'],
+        likesCount: 3890,
+        commentsCount: 134,
+        createdAt: new Date(Date.now() - 7200000).toISOString(),
+        isLiked: false,
+        isSaved: true
       }
     ];
   }, []);
-
-  // Keep Render backend warm
-  useEffect(() => {
-    const keepWarm = () => {
-      fetch(`${API_CONFIG.baseUrl}/health`, { 
-        method: 'GET',
-        headers: API_CONFIG.getHeaders()
-      }).catch(() => {}); // Silent fail
-    };
-
-    // Initial ping
-    keepWarm();
-    
-    // Keep warm every 10 minutes
-    const interval = setInterval(keepWarm, 10 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [API_CONFIG]);
 
   // Check for profile navigation data on component mount
   useEffect(() => {
@@ -173,7 +151,7 @@ const HomeScreen = () => {
     }
   }, []);
 
-  // Enhanced video fetching with progressive loading
+  // Optimized video fetching
   const fetchVideos = useCallback(async () => {
     if (fetchingRef.current) return;
     
@@ -181,13 +159,11 @@ const HomeScreen = () => {
     setLoading(true);
 
     try {
-      // Check cache first - longer cache for free hosting
       const cachedVideos = sessionStorage.getItem('cachedVideos');
       const cacheTimestamp = sessionStorage.getItem('videoCacheTime');
       const now = Date.now();
       
-      // Use cache if it's less than 15 minutes old (longer for free hosting)
-      if (cachedVideos && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 15 * 60 * 1000) {
+      if (cachedVideos && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 5 * 60 * 1000) {
         console.log('Loading videos from cache');
         const parsedVideos = JSON.parse(cachedVideos);
         setVideos(parsedVideos);
@@ -199,44 +175,22 @@ const HomeScreen = () => {
       console.log('Fetching fresh videos from API');
       
       try {
-        // Show loading state with mock data first for better UX
+        const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos`);
+        sessionStorage.setItem('cachedVideos', JSON.stringify(data));
+        sessionStorage.setItem('videoCacheTime', now.toString());
+        setVideos(data);
+        console.log(`Loaded ${data.length} videos successfully`);
+      } catch (apiError) {
+        console.log('API not available, using mock data for demo');
         const mockVideos = generateMockVideos();
         setVideos(mockVideos);
-        setLoading(false);
-        
-        // Then fetch real data in background
-        const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos`, {}, 1); // Only 1 retry for speed
-        
-        if (data && Array.isArray(data)) {
-          // Optimize video URLs and thumbnails
-          const optimizedVideos = data.map(video => ({
-            ...video,
-            // Add size parameter to reduce bandwidth
-            url: video.url + (video.url.includes('?') ? '&' : '?') + 'quality=720p',
-            thumbnail: video.thumbnail || `${video.url}#t=1`, // Use video frame as thumbnail
-            user: {
-              ...video.user,
-              // Optimize avatar size
-              avatar: video.user?.avatar ? 
-                video.user.avatar.replace(/w=\d+/, 'w=100').replace(/h=\d+/, 'h=100') : 
-                `https://ui-avatars.com/api/?name=${encodeURIComponent(video.user?.username || 'User')}&size=100&background=random&color=fff`
-            }
-          }));
-
-          sessionStorage.setItem('cachedVideos', JSON.stringify(optimizedVideos));
-          sessionStorage.setItem('videoCacheTime', now.toString());
-          setVideos(optimizedVideos);
-          console.log(`Loaded ${optimizedVideos.length} videos successfully`);
-        }
-      } catch (apiError) {
-        console.log('API error, using mock data:', apiError.message);
-        // Keep mock data that was already loaded
+        sessionStorage.setItem('cachedVideos', JSON.stringify(mockVideos));
+        sessionStorage.setItem('videoCacheTime', now.toString());
       }
       
     } catch (error) {
       console.error("Failed to fetch videos:", error);
       
-      // Try cached data as fallback
       const cachedVideos = sessionStorage.getItem('cachedVideos');
       if (cachedVideos) {
         console.log('Using cached videos as fallback');
@@ -250,47 +204,29 @@ const HomeScreen = () => {
     }
   }, [API_CONFIG, fetchWithRetry, generateMockVideos]);
 
-  // Optimized video preloading with intersection observer
+  // Cleanup retry timeout on unmount
   useEffect(() => {
-    intersectionObserver.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const video = entry.target;
-          if (entry.isIntersecting) {
-            // Preload video when it's about to come into view
-            video.preload = 'metadata';
-            if (video.readyState === 0) {
-              video.load();
-            }
-          } else {
-            // Unload video when it's far from view to save memory
-            if (!video.paused) {
-              video.pause();
-            }
-            // Clear video data for better memory management
-            if (Math.abs(parseInt(entry.target.dataset.index) - currentVideo) > 2) {
-              video.src = '';
-              video.preload = 'none';
-            }
-          }
-        });
-      },
-      {
-        rootMargin: '50px 0px', // Start preloading 50px before video enters viewport
-        threshold: 0.1
-      }
-    );
-
     return () => {
-      if (intersectionObserver.current) {
-        intersectionObserver.current.disconnect();
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, [currentVideo]);
+  }, []);
 
-  // Enhanced video playback management
+  // Optimized video playback management
   const manageVideoPlayback = useCallback((newCurrentVideo) => {
     console.log('Managing video playback for video:', newCurrentVideo);
+
+    // Get videos to preload (current + adjacent)
+    const videosToPreload = [];
+    for (let i = Math.max(0, newCurrentVideo - PRELOAD_RANGE); 
+         i <= Math.min(videos.length - 1, newCurrentVideo + PRELOAD_RANGE); 
+         i++) {
+      videosToPreload.push(i);
+    }
 
     Object.entries(videoRefs.current).forEach(([index, videoElement]) => {
       if (!videoElement) return;
@@ -300,40 +236,37 @@ const HomeScreen = () => {
       if (videoIndex === newCurrentVideo) {
         // Current video - play it
         videoElement.muted = isMuted;
-        videoElement.currentTime = 0; // Reset to beginning
+        videoElement.currentTime = 0; // Reset to start for better UX
         
         const playPromise = videoElement.play();
         if (playPromise !== undefined) {
           playPromise.catch(err => {
-            console.warn("Autoplay failed:", err);
+            console.warn("Autoplay failed, trying muted:", err);
             videoElement.muted = true;
             setIsMuted(true);
             videoElement.play().catch(e => console.error("Muted autoplay also failed:", e));
           });
         }
-      } else if (Math.abs(videoIndex - newCurrentVideo) <= 1) {
-        // Adjacent videos - preload but pause
+      } else if (videosToPreload.includes(videoIndex)) {
+        // Adjacent videos - preload but don't play
         videoElement.pause();
-        if (videoElement.preload !== 'metadata') {
-          videoElement.preload = 'metadata';
+        if (videoElement.readyState < 2) { // If not loaded enough
+          videoElement.load(); // Trigger preloading
         }
       } else {
-        // Far videos - stop and unload
+        // Distant videos - pause and reset
         videoElement.pause();
         videoElement.currentTime = 0;
-        if (Math.abs(videoIndex - newCurrentVideo) > 2) {
-          videoElement.preload = 'none';
-        }
       }
     });
-  }, [isMuted]);
+  }, [isMuted, videos.length]);
 
   // Handle mute/unmute functionality
   const toggleMute = useCallback(() => {
     const newMutedState = !isMuted;
     setIsMuted(newMutedState);
 
-    // Apply only to current video for better performance
+    // Apply to current video only for better performance
     const currentVideoElement = videoRefs.current[currentVideo];
     if (currentVideoElement) {
       currentVideoElement.muted = newMutedState;
@@ -342,7 +275,7 @@ const HomeScreen = () => {
     console.log("Toggled mute:", newMutedState);
   }, [isMuted, currentVideo]);
 
-  // Optimized scroll handling with better throttling
+  // Optimized scroll handling with debouncing
   useEffect(() => {
     if (profileNavigation) return;
 
@@ -350,69 +283,75 @@ const HomeScreen = () => {
     if (!container) return;
 
     let ticking = false;
-    let lastScrollTime = 0;
 
     const handleScroll = () => {
-      const now = Date.now();
-      if (now - lastScrollTime < 100) return; // Throttle to 10fps
-      
       if (!ticking) {
         requestAnimationFrame(() => {
-          const scrollPosition = container.scrollTop;
-          const windowHeight = window.innerHeight;
-          const newCurrentVideo = Math.round(scrollPosition / windowHeight);
-
-          if (
-            newCurrentVideo !== currentVideo &&
-            newCurrentVideo < videos.length &&
-            newCurrentVideo >= 0
-          ) {
-            console.log("Scroll detected, changing from video", currentVideo, "to", newCurrentVideo);
-            setCurrentVideo(newCurrentVideo);
+          // Clear existing timeout
+          if (scrollTimeoutRef.current) {
+            clearTimeout(scrollTimeoutRef.current);
           }
+
+          // Debounce the video change
+          scrollTimeoutRef.current = setTimeout(() => {
+            const scrollPosition = container.scrollTop;
+            const windowHeight = window.innerHeight;
+            const newCurrentVideo = Math.round(scrollPosition / windowHeight);
+
+            if (
+              newCurrentVideo !== currentVideo &&
+              newCurrentVideo < videos.length &&
+              newCurrentVideo >= 0
+            ) {
+              console.log("Scroll detected, changing from video", currentVideo, "to", newCurrentVideo);
+              setCurrentVideo(newCurrentVideo);
+            }
+          }, 100); // Debounce by 100ms
+
           ticking = false;
-          lastScrollTime = now;
         });
         ticking = true;
       }
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
   }, [currentVideo, videos.length, profileNavigation]);
 
   // Auto-play management when currentVideo changes
   useEffect(() => {
     if (videos.length > 0 && !loading) {
-      const timer = setTimeout(() => {
-        manageVideoPlayback(currentVideo);
-      }, 200); // Slightly longer delay for free hosting
-      
-      return () => clearTimeout(timer);
+      // Immediate playback change for better responsiveness
+      manageVideoPlayback(currentVideo);
     }
   }, [currentVideo, videos.length, loading, manageVideoPlayback]);
 
   // Initial auto-play when videos first load
   useEffect(() => {
-    if (videos.length > 0 && !loading && currentVideo === 0) {
+    if (videos.length > 0 && !loading) {
       const timer = setTimeout(() => {
         console.log('Initial video load, starting playback');
-        manageVideoPlayback(0);
-      }, 1000); // Longer delay for initial load
+        manageVideoPlayback(currentVideo);
+      }, 200); // Reduced timeout
       
       return () => clearTimeout(timer);
     }
   }, [videos.length, loading, currentVideo, manageVideoPlayback]);
 
-  // Simplified comment fetching
+  // Optimized comment fetching with caching
   const fetchComments = useCallback(async (videoId) => {
     if (comments[videoId]) return;
 
     try {
-      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/comments`, {}, 1);
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/comments`);
       setComments(prev => ({
         ...prev,
-        [videoId]: data || []
+        [videoId]: data
       }));
     } catch (error) {
       console.error("Error fetching comments:", error);
@@ -423,33 +362,38 @@ const HomeScreen = () => {
     }
   }, [comments, API_CONFIG, fetchWithRetry]);
 
-  // Optimized handlers with debouncing
+  // Optimized like handler with optimistic updates
   const handleLike = useCallback(async (videoId) => {
     const currentVideoData = videos.find(v => v._id === videoId);
     if (!currentVideoData) return;
     
     const wasLiked = currentVideoData.isLiked;
     const newLikesCount = wasLiked 
-      ? Math.max(0, (currentVideoData.likesCount || 0) - 1)
+      ? (currentVideoData.likesCount || 0) - 1 
       : (currentVideoData.likesCount || 0) + 1;
 
-    // Optimistic update
     setVideos(prev => prev.map(video => 
       video._id === videoId 
         ? { ...video, isLiked: !wasLiked, likesCount: newLikesCount }
         : video
     ));
 
-    // Background API call with no retry for speed
     try {
-      await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/like`, {
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/like`, {
         method: "POST"
-      }, 1);
+      });
+      
+      setVideos(prev => prev.map(video => 
+        video._id === videoId 
+          ? { ...video, likes: data.likes, isLiked: data.isLiked, likesCount: data.likesCount }
+          : video
+      ));
     } catch (error) {
       console.error("Error liking video:", error);
     }
   }, [videos, API_CONFIG, fetchWithRetry]);
 
+  // Optimized save handler with optimistic updates
   const handleSave = useCallback(async (videoId) => {
     const currentVideoData = videos.find(v => v._id === videoId);
     if (!currentVideoData) return;
@@ -463,14 +407,21 @@ const HomeScreen = () => {
     ));
 
     try {
-      await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/save`, {
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${videoId}/save`, {
         method: "POST"
-      }, 1);
+      });
+      
+      setVideos(prev => prev.map(video => 
+        video._id === videoId 
+          ? { ...video, isSaved: data.isSaved }
+          : video
+      ));
     } catch (error) {
       console.error("Error saving video:", error);
     }
   }, [videos, API_CONFIG, fetchWithRetry]);
 
+  // Handle share functionality
   const handleShare = useCallback(async (video) => {
     const shareData = {
       title: video.title || 'Check out this video!',
@@ -483,12 +434,20 @@ const HomeScreen = () => {
         await navigator.share(shareData);
       } else {
         await navigator.clipboard.writeText(shareData.url);
+        console.log('Video link copied to clipboard!');
       }
     } catch (error) {
       console.error('Error sharing:', error);
+      try {
+        await navigator.clipboard.writeText(shareData.url);
+        console.log('Video link copied to clipboard!');
+      } catch (clipboardErr) {
+        console.error('Clipboard error:', clipboardErr);
+      }
     }
   }, []);
 
+  // Optimized comment submission
   const handleCommentSubmit = useCallback(async (e) => {
     e.preventDefault();
     if (!newComment.trim() || !activeVideoId || commentLoading) return;
@@ -502,7 +461,7 @@ const HomeScreen = () => {
       user: {
         _id: currentUser?._id || 'demo',
         username: currentUser?.username || 'You',
-        avatar: currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.username || 'You')}&size=100&background=random&color=fff`
+        avatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150'
       },
       createdAt: new Date().toISOString()
     };
@@ -516,10 +475,17 @@ const HomeScreen = () => {
     setCommentLoading(true);
 
     try {
-      await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${activeVideoId}/comments`, {
+      const data = await fetchWithRetry(`${API_CONFIG.baseUrl}/videos/${activeVideoId}/comments`, {
         method: "POST",
         body: JSON.stringify({ text: commentText })
-      }, 1);
+      });
+
+      setComments(prev => ({
+        ...prev,
+        [activeVideoId]: prev[activeVideoId].map(comment => 
+          comment._id === tempId ? data : comment
+        )
+      }));
       
       setVideos(prev => prev.map(video => 
         video._id === activeVideoId 
@@ -528,6 +494,11 @@ const HomeScreen = () => {
       ));
     } catch (error) {
       console.error("Error posting comment:", error);
+      setVideos(prev => prev.map(video => 
+        video._id === activeVideoId 
+          ? { ...video, commentsCount: (video.commentsCount || 0) + 1 }
+          : video
+      ));
     } finally {
       setCommentLoading(false);
     }
@@ -552,65 +523,57 @@ const HomeScreen = () => {
   // Optimized VideoPlayer component
   const VideoPlayer = React.memo(({ video, isActive, index }) => {
     const [isFollowing, setIsFollowing] = useState(false);
-    const [videoError, setVideoError] = useState(false);
-    const [videoLoaded, setVideoLoaded] = useState(false);
     
     const isLiked = video.isLiked || false;
     const isSaved = video.isSaved || false;
-    const likesCount = video.likesCount || 0;
+    const likesCount = video.likesCount || (Array.isArray(video.likes) ? video.likes.length : (video.likes || 0));
     const commentsCount = video.commentsCount || 0;
+
+    // Determine preload strategy
+    const shouldPreload = Math.abs(index - currentVideo) <= PRELOAD_RANGE;
+    const preloadValue = shouldPreload ? "auto" : "metadata";
 
     return (
       <div className="relative h-screen w-full bg-black overflow-hidden snap-start flex-shrink-0">
-        {!videoLoaded && !videoError && (
-          <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-              <p className="text-white text-sm">Loading video...</p>
-            </div>
-          </div>
-        )}
-
-        {videoError && (
-          <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-            <div className="text-center">
-              <p className="text-white text-lg mb-2">Video unavailable</p>
-              <p className="text-gray-400 text-sm">This video couldn't be loaded</p>
-            </div>
-          </div>
-        )}
-
         <video
           ref={(el) => {
             if (el) {
               videoRefs.current[index] = el;
-              // Set up intersection observer
-              if (intersectionObserver.current) {
-                el.dataset.index = index;
-                intersectionObserver.current.observe(el);
-              }
+              console.log('Video ref set for index:', index);
             }
           }}
           className="absolute inset-0 w-full h-full object-cover"
           src={video?.url}
+          muted={isMuted}
           loop
           playsInline
-          preload="none" // Start with no preload for better initial performance
+          preload={preloadValue}
           poster={video?.thumbnail}
           onLoadedData={() => {
-            setVideoLoaded(true);
-            console.log('Video loaded for index:', index);
+            console.log('Video loaded for index:', index, 'isActive:', isActive);
           }}
-          onError={(e) => {
-            console.error('Video error:', e);
-            setVideoError(true);
+          onCanPlay={() => {
+            // Only auto-play if this is the current active video
+            if (isActive && index === currentVideo) {
+              const videoElement = videoRefs.current[index];
+              if (videoElement && videoElement.paused) {
+                videoElement.play().catch(e => {
+                  console.warn('Auto-play failed:', e);
+                  videoElement.muted = true;
+                  videoElement.play().catch(err => console.error('Muted autoplay failed:', err));
+                });
+              }
+            }
           }}
           onPlay={() => console.log('Video playing:', index)}
           onPause={() => console.log('Video paused:', index)}
+          onError={(e) => console.error('Video error:', e)}
         />
 
+        {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
+        {/* Back Button (only shown when coming from profile) */}
         {profileNavigation && (
           <div className="absolute top-4 left-4 z-20">
             <button
@@ -622,6 +585,7 @@ const HomeScreen = () => {
           </div>
         )}
 
+        {/* Source Indicator */}
         {profileNavigation && (
           <div className="absolute top-4 right-4 z-20">
             <div className="px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm">
@@ -633,6 +597,7 @@ const HomeScreen = () => {
           </div>
         )}
 
+        {/* Video Counter */}
         {profileNavigation && (
           <div className="absolute top-16 right-4 z-20">
             <div className="px-2 py-1 rounded-full bg-black/40 backdrop-blur-sm">
@@ -643,6 +608,7 @@ const HomeScreen = () => {
           </div>
         )}
 
+        {/* Mute/Unmute Button */}
         <div className="absolute top-4 left-4 z-20">
           <button
             onClick={toggleMute}
@@ -656,10 +622,12 @@ const HomeScreen = () => {
           </button>
         </div>
 
+        {/* Right Side Actions */}
         <div className="absolute right-3 bottom-24 flex flex-col items-center space-y-6 z-10">
+          {/* Profile Avatar */}
           <div className="relative">
             <img
-              src={video?.user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(video?.user?.username || 'User')}&size=100&background=random&color=fff`}
+              src={video?.user?.avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150"}
               alt={video?.user?.username || "user"}
               className="w-12 h-12 rounded-full border-2 border-white object-cover"
               loading="lazy"
@@ -674,6 +642,7 @@ const HomeScreen = () => {
             </button>
           </div>
 
+          {/* Like Button */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => handleLike(video._id)}
@@ -690,6 +659,7 @@ const HomeScreen = () => {
             </span>
           </div>
 
+          {/* Comment Button */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => openCommentModal(video._id)}
@@ -702,6 +672,7 @@ const HomeScreen = () => {
             </span>
           </div>
 
+          {/* Share Button */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => handleShare(video)}
@@ -714,6 +685,7 @@ const HomeScreen = () => {
             </span>
           </div>
 
+          {/* Save Button */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => handleSave(video._id)}
@@ -731,6 +703,7 @@ const HomeScreen = () => {
           </div>
         </div>
 
+        {/* Bottom Content */}
         <div className="absolute bottom-4 left-4 right-20 text-white z-10">
           <div className="space-y-2 mb-[80px]">
             <div className="flex items-center space-x-2">
@@ -760,13 +733,15 @@ const HomeScreen = () => {
     );
   });
 
-  // Simplified Comment Modal
+  // Memoized Comment Modal Component
   const CommentModal = React.memo(() => {
+    const activeVideo = videos.find(v => v._id === activeVideoId);
     const videoComments = comments[activeVideoId] || [];
 
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
         <div className="bg-white w-full h-2/3 rounded-t-3xl flex flex-col">
+          {/* Header */}
           <div className="flex items-center justify-between p-4 border-b">
             <h3 className="text-lg font-semibold text-gray-800">
               {videoComments.length} Comments
@@ -779,6 +754,7 @@ const HomeScreen = () => {
             </button>
           </div>
 
+          {/* Comments List */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {videoComments.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
@@ -790,7 +766,7 @@ const HomeScreen = () => {
               videoComments.map((comment, index) => (
                 <div key={comment._id || index} className="flex space-x-3">
                   <img
-                    src={comment.user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=random&color=fff&size=100`}
+                    src={comment.user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=random&color=fff&size=200`}
                     alt={comment.user?.username || "user"}
                     className="w-8 h-8 rounded-full object-cover flex-shrink-0"
                     loading="lazy"
@@ -813,10 +789,11 @@ const HomeScreen = () => {
             )}
           </div>
 
+          {/* Comment Input */}
           <div className="p-4 border-t bg-gray-50 mb-[78px]">
             <div className="flex items-center space-x-3">
               <img
-                src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.username || 'You')}&background=random&color=fff&size=100`}
+                src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.username || 'You')}&background=random&color=fff&size=200`}
                 alt="You"
                 className="w-8 h-8 rounded-full object-cover flex-shrink-0"
               />
@@ -861,7 +838,7 @@ const HomeScreen = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p className="text-lg mb-2">Loading videos...</p>
-          <p className="text-sm text-gray-400">Preparing content...</p>
+          <p className="text-sm text-gray-400">Optimizing your experience</p>
         </div>
       </div>
     );
@@ -875,7 +852,7 @@ const HomeScreen = () => {
             <MessageCircle className="w-8 h-8 text-gray-400" />
           </div>
           <p className="text-lg mb-2">No videos available</p>
-          <p className="text-sm text-gray-400">Check your connection and try again</p>
+          <p className="text-sm text-gray-400">Check back later for new content</p>
           <button 
             onClick={fetchVideos}
             className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
@@ -900,6 +877,7 @@ const HomeScreen = () => {
         ))}
       </div>
 
+      {/* Comment Modal */}
       {showCommentModal && <CommentModal />}
     </>
   );
