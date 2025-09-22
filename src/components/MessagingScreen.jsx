@@ -33,7 +33,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const API_BASE_URL = 'http://localhost:5002/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -280,87 +280,82 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     setDragActive(false);
   };
 
-  const uploadFiles = async () => {
-    if (!mediaModal.files.length) return;
-    
-    setUploading(true);
-    setUploadProgress(0);
-    
-    try {
-      const token = localStorage.getItem('token');
-      const totalFiles = mediaModal.files.length;
-      
-      for (let i = 0; i < mediaModal.files.length; i++) {
-        const file = mediaModal.files[i];
-        
-        // Update progress for current file
-        setUploadProgress(Math.round(((i) / totalFiles) * 100));
+ const uploadFiles = async () => {
+  if (!mediaModal.files.length) return;
 
-        // 1. Get signed upload URL from backend
-        const signedUrlResponse = await fetch(`${API_BASE_URL}/videos/signed-url`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            fileName: file.name,
-            fileType: file.type,
-          })
-        });
+  setUploading(true);
+  setUploadProgress(0);
 
-        if (!signedUrlResponse.ok) {
-          throw new Error('Failed to get signed URL');
-        }
+  try {
+    const token = localStorage.getItem('token');
+    const totalFiles = mediaModal.files.length;
 
-        const { uploadUrl, key } = await signedUrlResponse.json();
+    for (let i = 0; i < totalFiles; i++) {
+      const file = mediaModal.files[i];
 
-        // 2. Upload file directly to Wasabi using PUT
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': file.type
-          },
-          body: file
-        });
+      // Update progress
+      setUploadProgress(Math.round((i / totalFiles) * 100));
 
-        if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload ${file.name}`);
-        }
-
-        // 3. Construct the file URL (you'll need to replace this with your actual Wasabi bucket URL)
-        const fileUrl = `https://your-bucket-name.s3.wasabisys.com/${key}`;
-        
-        // 4. Determine message type based on file type
-        let messageType = 'file';
-        if (file.type.startsWith('image/')) messageType = 'image';
-        else if (file.type.startsWith('video/')) messageType = 'video';
-        else if (file.type.startsWith('audio/')) messageType = 'audio';
-        
-        // 5. Send message with file
-        await sendMessage(null, {
-          type: messageType,
-          fileUrl: fileUrl,
-          fileSize: file.size,
+      // 1️⃣ Get signed upload URL from backend
+      const signedUrlResponse = await fetch(`${API_BASE_URL}/messages/media/signed-url`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
           fileName: file.name,
-          content: file.name,
-          key: key // Store the key for future reference
-        });
-        
-        // Update progress
-        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
+          fileType: file.type,
+        })
+      });
+
+      if (!signedUrlResponse.ok) {
+        throw new Error('Failed to get signed URL');
       }
-      
-      alert('✅ Files uploaded successfully!');
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('❌ Failed to upload files: ' + error.message);
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-      setMediaModal({ show: false, files: [] });
+
+      const { uploadUrl, fileUrl, key } = await signedUrlResponse.json();
+
+      // 2️⃣ Upload file to Wasabi
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Failed to upload ${file.name}`);
+      }
+
+      // 3️⃣ Detect type (image/video/audio/file)
+      let messageType = 'file';
+      if (file.type.startsWith('image/')) messageType = 'image';
+      else if (file.type.startsWith('video/')) messageType = 'video';
+      else if (file.type.startsWith('audio/')) messageType = 'audio';
+
+      // 4️⃣ Send chat message with file info
+      await sendMessage(null, {
+        type: messageType,
+        fileUrl,       // ✅ from backend
+        fileSize: file.size,
+        fileName: file.name,
+        content: file.name,
+        key            // ✅ store Wasabi key for reference
+      });
+
+      setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
     }
-  };
+
+    alert('✅ Files uploaded successfully!');
+  } catch (error) {
+    console.error('Upload error:', error);
+    alert('❌ Failed to upload files: ' + error.message);
+  } finally {
+    setUploading(false);
+    setUploadProgress(0);
+    setMediaModal({ show: false, files: [] });
+  }
+};
+
 
   // Delete message functions
   const showDeleteModal = (message) => {
