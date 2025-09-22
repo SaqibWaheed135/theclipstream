@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, DollarSign, Star, Gift, History, CheckCircle, XCircle, Clock, User, Mail, Phone, MapPin, Calendar, Lock } from 'lucide-react';
+import { ArrowLeft, CreditCard, DollarSign, Star, Gift, History, CheckCircle, XCircle, Clock, User, Mail, Phone, MapPin, Calendar, Lock, Upload } from 'lucide-react';
 
 const PointsRechargeScreen = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('recharge');
@@ -17,7 +17,7 @@ const PointsRechargeScreen = ({ onBack }) => {
     email: '',
     phone: '',
     
-    // Billing Address
+    // Billing Address (for card)
     address: '',
     city: '',
     state: '',
@@ -33,15 +33,13 @@ const PointsRechargeScreen = ({ onBack }) => {
     // PayPal Details
     paypalEmail: '',
     
-    // Bank Details
-    bankName: '',
-    accountNumber: '',
-    routingNumber: '',
-    accountType: 'checking'
+    // Bank Transfer Proof
+    transactionScreenshot: null, // File object for screenshot
+    transactionId: '', // User's transaction reference
   });
   const [validationErrors, setValidationErrors] = useState({});
 
-  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const API_BASE_URL = 'http://localhost:5002/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -61,11 +59,94 @@ const PointsRechargeScreen = ({ onBack }) => {
   ];
 
   const paymentMethods = [
-    { id: 'card', name: 'Credit/Debit Card', icon: CreditCard },
-    { id: 'paypal', name: 'PayPal', icon: DollarSign },
-    { id: 'apple', name: 'Apple Pay', icon: Star },
+    // { id: 'card', name: 'Credit/Debit Card', icon: CreditCard },
+    // { id: 'paypal', name: 'PayPal', icon: DollarSign },
+    // { id: 'apple', name: 'Apple Pay', icon: Star },
     { id: 'bank', name: 'Bank Transfer', icon: Gift },
   ];
+  const getCategoryForIcon = (transaction) => {
+    return transaction.category || 
+           (transaction.status && `recharge_${transaction.status}`) || 
+           transaction.type || 
+           'unknown';
+  };
+
+  // Helper function to safely get category/type for colors
+  const getCategoryForColor = (transaction) => {
+    return transaction.category || 
+           (transaction.status && `recharge_${transaction.status}`) || 
+           transaction.type || 
+           'unknown';
+  };
+
+  // ✅ Transaction Icon Function - MOVED UP
+  const getTransactionIcon = (category) => {
+    switch (category) {
+      case 'recharge_approved':
+      case 'recharge':
+      case 'credit':
+        return <CheckCircle className="w-5 h-5 text-green-400" />;
+      case 'recharge_request':
+        return <Clock className="w-5 h-5 text-yellow-400" />;
+      case 'recharge_rejected':
+      case 'debit':
+        return <XCircle className="w-5 h-5 text-red-400" />;
+      case 'recharge_cancelled':
+      case 'pending':
+        return <Clock className="w-5 h-5 text-gray-400" />;
+      case 'gift':
+      case 'award':
+      case 'bonus':
+        return <Gift className="w-5 h-5 text-yellow-400" />;
+      default:
+        return <Clock className="w-5 h-5 text-gray-400" />;
+    }
+  };
+
+  // ✅ Transaction Color Function - MOVED UP
+  const getTransactionColor = (category) => {
+    switch (category) {
+      case 'recharge_approved':
+      case 'recharge':
+      case 'award':
+      case 'bonus':
+      case 'credit':
+        return 'text-green-400';
+      case 'recharge_rejected':
+      case 'debit':
+        return 'text-red-400';
+      case 'recharge_request':
+      case 'recharge_cancelled':
+      case 'pending':
+        return 'text-gray-400';
+      default:
+        return 'text-gray-400';
+    }
+  };
+
+  // ✅ Format Date Function - MOVED UP
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Invalid date';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // App's bank details for manual transfer (hardcoded for demo; in real app, fetch from backend)
+  const appBankDetails = {
+    bankName: 'Example Bank',
+    accountNumber: '1234567890',
+    routingNumber: '0987654321',
+    accountHolder: 'ClipStream Inc.',
+    swiftCode: 'EXBKUS33',
+    instructions: 'Please transfer the amount to this account and upload the transaction screenshot/receipt.'
+  };
 
   // Fetch points balance
   const fetchPointsBalance = async () => {
@@ -84,21 +165,94 @@ const PointsRechargeScreen = ({ onBack }) => {
   };
 
   // Fetch points history
-  const fetchPointsHistory = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/users/points/history`, {
-        headers: getAuthHeaders()
-      });
+  // In PointsRechargeScreen component - Update fetchPointsHistory
+const fetchPointsHistory = async () => {
+  try {
+    // Get user ID from token or localStorage
+    const token = localStorage.getItem("token");
+    const userId = token ? JSON.parse(atob(token.split('.')[1])).id : null;
+    
+    const response = await fetch(`${API_BASE_URL}/recharges/history?userId=${userId}`, {
+      headers: getAuthHeaders()
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        setHistory(data.history);
-      }
-    } catch (error) {
-      console.error('Error fetching points history:', error);
+    if (response.ok) {
+      const data = await response.json();
+      console.log('Points history response:', data);
+      
+      // Map recharges to transaction format expected by frontend
+      const mappedHistory = (data.recharges || []).map(recharge => ({
+        _id: recharge._id,
+        transactionId: recharge.requestId,
+        type: recharge.status === 'approved' ? 'credit' : 'pending',
+        category: `recharge_${recharge.status}`,
+        amount: recharge.pointsToAdd,
+        balanceBefore: 0, // You might want to calculate this
+        balanceAfter: recharge.pointsToAdd, // Simplified
+        description: `Recharge ${recharge.status}: $${recharge.amount}`,
+        createdAt: recharge.requestedAt,
+        metadata: {
+          rechargeId: recharge._id,
+          status: recharge.status
+        }
+      }));
+      
+      setHistory(mappedHistory);
+    } else {
+      console.error('Failed to fetch history:', await response.text());
+      setHistory([]);
     }
-  };
+  } catch (error) {
+    console.error('Error fetching points history:', error);
+    setHistory([]);
+  }
+};
 
+// Update the history rendering section (around line 1729 where the error occurs)
+{activeTab === 'history' && (
+  <div>
+    {/* Add null check for history */}
+    {(!history || history.length === 0) ? (
+      <div className="text-center py-12">
+        <History className="w-16 h-16 mx-auto mb-4 text-gray-600" />
+        <p className="text-gray-400 text-lg mb-2">No transaction history</p>
+        <p className="text-gray-500">Your points transactions will appear here</p>
+      </div>
+    ) : (
+      <div className="space-y-3">
+        {history.map((transaction, index) => (
+          <div
+            key={transaction._id || transaction.transactionId || index} // Use index as fallback
+            className="bg-gray-900 rounded-lg p-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {getTransactionIcon(transaction.category || transaction.type)}
+                <div>
+                  <p className="font-medium">{transaction.description || transaction.categoryDisplay || 'Transaction'}</p>
+                  <p className="text-sm text-gray-400">
+                    {formatDate(transaction.createdAt || transaction.requestedAt)}
+                  </p>
+                  {transaction.transactionId && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      ID: {transaction.transactionId}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <p className={`font-bold text-lg ${getTransactionColor(transaction.type || transaction.category)}`}>
+                  {transaction.amount > 0 ? '+' : ''}{transaction.amount || transaction.pointsToAdd}
+                </p>
+                <p className="text-xs text-gray-400">points</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -169,14 +323,11 @@ const PointsRechargeScreen = ({ onBack }) => {
         errors.paypalEmail = 'Please enter a valid PayPal email';
       }
     } else if (selectedPaymentMethod === 'bank') {
-      if (!paymentDetails.bankName.trim()) {
-        errors.bankName = 'Bank name is required';
+      if (!paymentDetails.transactionId.trim()) {
+        errors.transactionId = 'Transaction ID/Reference is required';
       }
-      if (!paymentDetails.accountNumber.trim()) {
-        errors.accountNumber = 'Account number is required';
-      }
-      if (!paymentDetails.routingNumber.trim()) {
-        errors.routingNumber = 'Routing number is required';
+      if (!paymentDetails.transactionScreenshot) {
+        errors.transactionScreenshot = 'Transaction screenshot is required';
       }
     }
 
@@ -190,6 +341,16 @@ const PointsRechargeScreen = ({ onBack }) => {
     // Clear validation error when user starts typing
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setPaymentDetails(prev => ({ ...prev, transactionScreenshot: file }));
+      if (validationErrors.transactionScreenshot) {
+        setValidationErrors(prev => ({ ...prev, transactionScreenshot: '' }));
+      }
     }
   };
 
@@ -237,20 +398,59 @@ const PointsRechargeScreen = ({ onBack }) => {
     setShowCheckout(true);
   };
 
-  const handleRecharge = async () => {
-    if (!validateForm()) {
-      alert('Please fill in all required fields correctly');
-      return;
-    }
+ // In your PointsRechargeScreen component, update the handleRecharge function
+const handleRecharge = async () => {
+  if (!validateForm()) {
+    alert('Please fill in all required fields correctly');
+    return;
+  }
 
-    const amount = selectedAmount || parseFloat(customAmount);
-    setRecharging(true);
+  const amount = selectedAmount || parseFloat(customAmount);
+  const pointsToAdd = calculatePoints(amount);
+  setRecharging(true);
 
-    try {
-      // Simulate payment processing delay
+  try {
+    let response;
+    if (selectedPaymentMethod === 'bank') {
+      // For bank transfer, create a recharge request with screenshot
+      const formData = new FormData();
+      formData.append('amount', amount.toString());
+      formData.append('pointsToAdd', pointsToAdd.toString());
+      formData.append('method', selectedPaymentMethod);
+      
+      // Stringify the details object
+      const detailsObj = {
+        fullName: paymentDetails.fullName,
+        email: paymentDetails.email,
+        phone: paymentDetails.phone,
+        transactionId: paymentDetails.transactionId,
+      };
+      formData.append('details', JSON.stringify(detailsObj));
+      
+      // Append the screenshot file
+      if (paymentDetails.transactionScreenshot) {
+        formData.append('transactionScreenshot', paymentDetails.transactionScreenshot);
+      }
+
+      // Log FormData contents for debugging (remove in production)
+      console.log('FormData contents:');
+      for (let [key, value] of formData.entries()) {
+        console.log(key, value);
+      }
+
+      response = await fetch(`${API_BASE_URL}/recharges/request`, {
+        method: 'POST',
+        headers: {
+          'Authorization': getAuthHeaders().Authorization,
+          // Don't set Content-Type for FormData - let browser set it with boundary
+        },
+        body: formData,
+      });
+    } else {
+      // For other methods, simulate/process payment as before
       await new Promise(resolve => setTimeout(resolve, 3000));
 
-      const response = await fetch(`${API_BASE_URL}/users/points/recharge`, {
+      response = await fetch(`${API_BASE_URL}/users/points/recharge`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -260,88 +460,58 @@ const PointsRechargeScreen = ({ onBack }) => {
           transactionId: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         })
       });
+    }
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (response.ok) {
+    if (response.ok) {
+      if (selectedPaymentMethod === 'bank') {
+        alert('Recharge request submitted successfully! Waiting for admin approval.');
+        // You might want to refresh the history here
+        await fetchPointsHistory();
+      } else {
         setPointsBalance(data.newBalance);
         alert(`Successfully recharged ${data.pointsAdded} points!`);
-        
-        // Reset form
-        setSelectedAmount(null);
-        setCustomAmount('');
-        setShowCheckout(false);
-        setPaymentDetails({
-          fullName: '',
-          email: '',
-          phone: '',
-          address: '',
-          city: '',
-          state: '',
-          zipCode: '',
-          country: '',
-          cardNumber: '',
-          expiryDate: '',
-          cvv: '',
-          cardholderName: '',
-          paypalEmail: '',
-          bankName: '',
-          accountNumber: '',
-          routingNumber: '',
-          accountType: 'checking'
-        });
-        setValidationErrors({});
-        
-        // Refresh history
-        fetchPointsHistory();
-        
-        // Switch to history tab to show the transaction
-        setActiveTab('history');
-      } else {
-        alert(data.msg || 'Recharge failed. Please try again.');
       }
-    } catch (error) {
-      console.error('Error during recharge:', error);
-      alert('Recharge failed. Please try again.');
-    } finally {
-      setRecharging(false);
+      
+      // Reset form
+      setSelectedAmount(null);
+      setCustomAmount('');
+      setShowCheckout(false);
+      setPaymentDetails({
+        fullName: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        country: '',
+        cardNumber: '',
+        expiryDate: '',
+        cvv: '',
+        cardholderName: '',
+        paypalEmail: '',
+        transactionScreenshot: null,
+        transactionId: '',
+      });
+      setValidationErrors({});
+      
+      // Switch to history tab to show the transaction
+      setActiveTab('history');
+    } else {
+      console.error('Response data:', data);
+      alert(data.msg || data.errors?.[0]?.msg || 'Recharge failed. Please try again.');
     }
-  };
+  } catch (error) {
+    console.error('Error during recharge:', error);
+    alert('Recharge failed. Please try again.');
+  } finally {
+    setRecharging(false);
+  }
+};
+ 
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getTransactionIcon = (type) => {
-    switch (type) {
-      case 'recharge':
-        return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'spend':
-        return <XCircle className="w-5 h-5 text-red-400" />;
-      case 'award':
-        return <Gift className="w-5 h-5 text-yellow-400" />;
-      default:
-        return <Clock className="w-5 h-5 text-gray-400" />;
-    }
-  };
-
-  const getTransactionColor = (type) => {
-    switch (type) {
-      case 'recharge':
-      case 'award':
-        return 'text-green-400';
-      case 'spend':
-        return 'text-red-400';
-      default:
-        return 'text-gray-400';
-    }
-  };
 
   if (loading) {
     return (
@@ -633,68 +803,66 @@ const PointsRechargeScreen = ({ onBack }) => {
               <div className="bg-gray-900 rounded-xl p-4">
                 <h3 className="text-lg font-semibold mb-4 flex items-center">
                   <Gift className="w-5 h-5 mr-2" />
-                  Bank Information
+                  Bank Transfer Information
                 </h3>
                 
+                {/* Display App's Bank Details */}
+                <div className="mb-6">
+                  <h4 className="text-md font-semibold mb-2">Transfer to this account:</h4>
+                  <div className="space-y-2 text-sm text-gray-300">
+                    <p><strong>Bank Name:</strong> {appBankDetails.bankName}</p>
+                    <p><strong>Account Number:</strong> {appBankDetails.accountNumber}</p>
+                    <p><strong>Routing Number:</strong> {appBankDetails.routingNumber}</p>
+                    <p><strong>Account Holder:</strong> {appBankDetails.accountHolder}</p>
+                    <p><strong>SWIFT Code:</strong> {appBankDetails.swiftCode}</p>
+                    <p className="text-gray-400">{appBankDetails.instructions}</p>
+                  </div>
+                </div>
+
+                {/* User's Proof */}
                 <div className="space-y-4">
                   <div>
                     <input
                       type="text"
-                      placeholder="Bank Name"
-                      value={paymentDetails.bankName}
-                      onChange={(e) => handleInputChange('bankName', e.target.value)}
+                      placeholder="Transaction ID/Reference"
+                      value={paymentDetails.transactionId}
+                      onChange={(e) => handleInputChange('transactionId', e.target.value)}
                       className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                        validationErrors.bankName ? 'border-red-500' : 'border-gray-700'
+                        validationErrors.transactionId ? 'border-red-500' : 'border-gray-700'
                       }`}
                     />
-                    {validationErrors.bankName && (
-                      <p className="text-red-400 text-sm mt-1">{validationErrors.bankName}</p>
+                    {validationErrors.transactionId && (
+                      <p className="text-red-400 text-sm mt-1">{validationErrors.transactionId}</p>
                     )}
                   </div>
 
                   <div>
-                    <input
-                      type="text"
-                      placeholder="Account Number"
-                      value={paymentDetails.accountNumber}
-                      onChange={(e) => handleInputChange('accountNumber', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                        validationErrors.accountNumber ? 'border-red-500' : 'border-gray-700'
-                      }`}
-                    />
-                    {validationErrors.accountNumber && (
-                      <p className="text-red-400 text-sm mt-1">{validationErrors.accountNumber}</p>
+                    <label className="block mb-2 text-sm font-medium">Upload Transaction Screenshot</label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                        id="transaction-screenshot"
+                      />
+                      <label
+                        htmlFor="transaction-screenshot"
+                        className="cursor-pointer flex items-center space-x-2 p-3 bg-gray-800 border rounded-lg w-full text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
+                      >
+                        <Upload className="w-5 h-5" />
+                        <span>{paymentDetails.transactionScreenshot ? paymentDetails.transactionScreenshot.name : 'Choose file'}</span>
+                      </label>
+                    </div>
+                    {validationErrors.transactionScreenshot && (
+                      <p className="text-red-400 text-sm mt-1">{validationErrors.transactionScreenshot}</p>
                     )}
                   </div>
-
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="Routing Number"
-                      value={paymentDetails.routingNumber}
-                      onChange={(e) => handleInputChange('routingNumber', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                        validationErrors.routingNumber ? 'border-red-500' : 'border-gray-700'
-                      }`}
-                    />
-                    {validationErrors.routingNumber && (
-                      <p className="text-red-400 text-sm mt-1">{validationErrors.routingNumber}</p>
-                    )}
-                  </div>
-
-                  <select
-                    value={paymentDetails.accountType}
-                    onChange={(e) => handleInputChange('accountType', e.target.value)}
-                    className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500"
-                  >
-                    <option value="checking">Checking Account</option>
-                    <option value="savings">Savings Account</option>
-                  </select>
                 </div>
               </div>
             )}
 
-            {/* Complete Payment Button */}
+            {/* Complete Payment / Submit Request Button */}
             <button
               onClick={handleRecharge}
               disabled={recharging}
@@ -703,12 +871,12 @@ const PointsRechargeScreen = ({ onBack }) => {
               {recharging ? (
                 <div className="flex items-center justify-center space-x-2">
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Processing Payment...</span>
+                  <span>{selectedPaymentMethod === 'bank' ? 'Submitting Request...' : 'Processing Payment...'}</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center space-x-2">
                   <Lock className="w-5 h-5" />
-                  <span>Complete Payment - ${selectedAmount || customAmount}</span>
+                  <span>{selectedPaymentMethod === 'bank' ? 'Submit Recharge Request' : `Complete Payment - $${selectedAmount || customAmount}`}</span>
                 </div>
               )}
             </button>
