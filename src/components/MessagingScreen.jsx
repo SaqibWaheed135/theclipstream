@@ -632,32 +632,23 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
                               {message.type === 'image' && (
                                 <div>
-                                  {console.log('Image URL:', message.fileUrl)} // Debug log
-
                                   <img
-                                      src={`${API_BASE_URL}/messages/file/${message.key}`} 
-
+                                    src={`${API_BASE_URL}/messages/file/${message.key}`}
                                     alt={message.fileName}
                                     className="max-w-full h-auto rounded-lg mb-2"
                                     onError={(e) => {
                                       console.error('Image load error:', e);
-                                      console.log('Failed URL:', message.fileUrl);
                                     }}
                                   />
-                                  {/* {message.content && <p className="text-sm">{message.content}</p>} */}
                                 </div>
                               )}
 
+
                               {message.type === 'video' && (
                                 <div>
-                                  <video
-                                    controls
-                                    className="max-w-full h-auto rounded-lg mb-2"
-                                  >
+                                  <video controls className="max-w-full h-auto rounded-lg mb-2">
                                     <source src={`${API_BASE_URL}/messages/file/${message.key}`} type="video/mp4" />
-
                                   </video>
-                                  {/* {message.content && <p className="text-sm">{message.content}</p>} */}
                                 </div>
                               )}
 
@@ -671,7 +662,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                                     )}
                                   </div>
                                   <a
-                                    href={message.fileUrl}
+                                    href={`${API_BASE_URL}/messages/file/${message.key}`}
                                     download={message.fileName}
                                     className="p-1 hover:bg-white hover:bg-opacity-20 rounded"
                                   >
