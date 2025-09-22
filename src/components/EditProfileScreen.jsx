@@ -48,6 +48,8 @@ const EditProfileScreen = ({ onBack }) => {
 
         if (response.ok) {
           const userData = await response.json();
+          console.log('Fetched user data:', userData); // Debug log
+          
           setUser(userData);
           setFormData({
             username: userData.username || '',
@@ -58,7 +60,7 @@ const EditProfileScreen = ({ onBack }) => {
             dateOfBirth: userData.dateOfBirth ? userData.dateOfBirth.split('T')[0] : '',
             location: userData.location || '',
             website: userData.website || '',
-            isPrivate: userData.isPrivate || false
+            isPrivate: Boolean(userData.isPrivate) // FIXED: Ensure boolean value
           });
           setAvatarPreview(userData.avatar || '');
         } else {
@@ -76,10 +78,20 @@ const EditProfileScreen = ({ onBack }) => {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    
+    // Handle checkbox specifically for isPrivate
+    if (type === 'checkbox') {
+      console.log(`Checkbox ${name} changed to:`, checked); // Debug log
+      setFormData(prev => ({
+        ...prev,
+        [name]: checked
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
     
     // Clear error when user starts typing
     if (errors[name]) {
@@ -205,6 +217,8 @@ const EditProfileScreen = ({ onBack }) => {
         formDataObj.append('removeAvatar', 'true');
       }
 
+      console.log('Sending isPrivate value:', formData.isPrivate); // Debug log
+
       const response = await fetch(`${API_BASE_URL}/users/profile`, {
         method: 'PUT',
         headers: getAuthHeaders(),
@@ -212,6 +226,7 @@ const EditProfileScreen = ({ onBack }) => {
       });
 
       const data = await response.json();
+      console.log('Save response:', data); // Debug log
 
       if (response.ok) {
         // Update localStorage with new user data
@@ -486,16 +501,16 @@ const EditProfileScreen = ({ onBack }) => {
           )}
         </div>
 
-        {/* Privacy Settings */}
+        {/* Privacy Settings - FIXED */}
         <div className="bg-gray-900 rounded-xl p-6">
           <h2 className="text-lg font-semibold mb-4">Privacy Settings</h2>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              {formData.isPrivate ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              {formData.isPrivate ? <EyeOff className="w-5 h-5 text-gray-400" /> : <Eye className="w-5 h-5 text-gray-400" />}
               <div>
-                <p className="font-medium">Private Account</p>
+                <p className="font-medium text-white">Private Account</p>
                 <p className="text-sm text-gray-400">
-                  Only approved followers can see your content
+                  Only approved followers can see your posts, videos, and profile details
                 </p>
               </div>
             </div>
@@ -503,11 +518,11 @@ const EditProfileScreen = ({ onBack }) => {
               <input
                 type="checkbox"
                 name="isPrivate"
-                checked={formData.isPrivate}
+                checked={formData.isPrivate === true}  // FIXED: Explicit boolean check
                 onChange={handleInputChange}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-300 dark:peer-focus:ring-pink-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
+              <div className="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pink-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
             </label>
           </div>
         </div>
