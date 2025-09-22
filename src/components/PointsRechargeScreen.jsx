@@ -39,7 +39,7 @@ const PointsRechargeScreen = ({ onBack }) => {
   });
   const [validationErrors, setValidationErrors] = useState({});
 
-  const API_BASE_URL = 'http://localhost:5002/api';
+  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
