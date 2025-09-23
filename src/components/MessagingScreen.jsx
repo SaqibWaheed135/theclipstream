@@ -13,16 +13,14 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [signedUrls, setSignedUrls] = useState({}); // Store signed URLs by message ID
+  const [signedUrls, setSignedUrls] = useState({});
 
-  // Delete message modal state
   const [deleteModal, setDeleteModal] = useState({
     show: false,
     message: null,
     canDeleteForEveryone: false
   });
 
-  // Media modal and upload state
   const [mediaModal, setMediaModal] = useState({ show: false, files: [] });
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -36,7 +34,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
-  // Memoized API config
   const API_CONFIG = useMemo(() => ({
     baseUrl: API_BASE_URL,
     getHeaders: () => {
@@ -52,7 +49,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     return API_CONFIG.getHeaders();
   };
 
-  // Fetch signed URL for a media file
   const fetchSignedUrl = useCallback(async (messageId, key) => {
     try {
       const response = await fetch(`${API_CONFIG.baseUrl}/messages/file/${encodeURIComponent(key)}`, {
@@ -68,7 +64,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   }, [API_CONFIG]);
 
-  // Initialize socket connection
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -138,7 +133,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     };
   }, [selectedConversation, fetchSignedUrl]);
 
-  // Load current user
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
@@ -146,12 +140,10 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   }, []);
 
-  // Fetch conversations
   useEffect(() => {
     fetchConversations();
   }, []);
 
-  // Handle direct conversation ID from props
   useEffect(() => {
     if (propConversationId && conversations.length > 0) {
       const conversation = conversations.find(conv => conv._id === propConversationId);
@@ -161,12 +153,10 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   }, [propConversationId, conversations]);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Fetch signed URLs for media messages
   useEffect(() => {
     messages.forEach((message) => {
       if (message.key && !signedUrls[message._id] && ['image', 'video'].includes(message.type)) {
@@ -240,7 +230,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          content,
+          content: content || (fileName ? `Sent ${fileName}` : `Sent a ${type}`), // Default content for media
           type,
           key,
           fileType,
@@ -288,7 +278,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   };
 
-  // File handling functions
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files).filter(file => 
       file.type.startsWith('image/') || file.type.startsWith('video/')
@@ -373,6 +362,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
         await sendMessage(null, {
           type: messageType,
+          content: `Sent ${file.name}`, // Add default content
           key,
           fileType: file.type,
           fileName: file.name
@@ -392,7 +382,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   };
 
-  // Delete message functions
   const showDeleteModal = (message) => {
     const canDeleteForEveryone = message.sender._id === (currentUser?.id || currentUser?._id);
     setDeleteModal({
@@ -476,7 +465,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     return otherParticipant?.username?.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  // Memoized Message Component
   const Message = React.memo(({ message, index, isOwn, showAvatar }) => {
     return (
       <div
@@ -584,7 +572,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   return (
     <div className="min-h-screen bg-black text-white flex relative">
-      {/* Drag overlay */}
       {dragActive && (
         <div className="absolute inset-0 bg-pink-600 bg-opacity-20 z-50 flex items-center justify-center">
           <div className="text-center">
@@ -594,7 +581,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         </div>
       )}
 
-      {/* Conversations List */}
       <div className={`w-full md:w-1/3 border-r border-gray-800 flex flex-col ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-gray-800">
           <h1 className="text-xl font-bold mb-4">Messages</h1>
@@ -674,7 +660,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         </div>
       </div>
 
-      {/* Chat Area */}
       <div
         className={`flex-1 flex flex-col ${selectedConversation ? 'flex' : 'hidden md:flex'}`}
         onDrop={handleDrop}
@@ -683,7 +668,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       >
         {selectedConversation ? (
           <>
-            {/* Chat Header */}
             <div className="p-4 border-b border-gray-800 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <button
@@ -723,7 +707,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
               </div>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
@@ -760,7 +743,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input */}
             <div className="p-4 border-t border-gray-800">
               <div className="flex items-center space-x-3">
                 <input
@@ -826,7 +808,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         )}
       </div>
 
-      {/* Delete Message Modal */}
       {deleteModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-900 rounded-lg p-6 w-full max-w-md mx-4">
@@ -871,7 +852,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         </div>
       )}
 
-      {/* Media Upload Modal */}
       {mediaModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-900 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
