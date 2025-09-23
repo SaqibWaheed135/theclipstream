@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, DollarSign, Star, History, Clock, CheckCircle, XCircle, AlertCircle, Loader2, User, Mail, Phone, CreditCard, Building, RefreshCw } from 'lucide-react';
+import { ArrowLeft, DollarSign, Star, History, Clock, CheckCircle, XCircle, AlertCircle, Loader2, User, Mail, Phone, CreditCard, Building, RefreshCw, Wallet } from 'lucide-react';
 
 const PointsWithdrawalScreen = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('withdraw');
@@ -12,7 +12,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  
+
   const [withdrawalDetails, setWithdrawalDetails] = useState({
     fullName: '',
     email: '',
@@ -27,12 +27,13 @@ const PointsWithdrawalScreen = ({ onBack }) => {
     city: '',
     state: '',
     zipCode: '',
-    country: ''
+    country: '',
+    usdtWalletAddress: ''
   });
-  
+
   const [validationErrors, setValidationErrors] = useState({});
 
-  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const API_BASE_URL = ' http://localhost:5002/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -43,32 +44,41 @@ const PointsWithdrawalScreen = ({ onBack }) => {
   };
 
   const withdrawalMethods = [
-    { 
-      id: 'paypal', 
-      name: 'PayPal', 
+    {
+      id: 'paypal',
+      name: 'PayPal',
       icon: DollarSign,
       description: 'Withdraw to your PayPal account',
       minAmount: 10,
       processingTime: '1-2 business days',
       fees: '2% + $0.30'
     },
-    { 
-      id: 'bank', 
-      name: 'Bank Transfer', 
+    {
+      id: 'bank',
+      name: 'Bank Transfer',
       icon: Building,
       description: 'Direct deposit to your bank account',
       minAmount: 25,
       processingTime: '3-5 business days',
       fees: '$2.00 flat fee'
     },
-    { 
-      id: 'card', 
-      name: 'Debit Card', 
+    {
+      id: 'card',
+      name: 'Debit Card',
       icon: CreditCard,
       description: 'Instant withdrawal to debit card',
       minAmount: 5,
       processingTime: 'Instant',
       fees: '3% + $0.25'
+    },
+    {
+      id: 'usdt',
+      name: 'USDT Wallet',
+      icon: Wallet,
+      description: 'Withdraw to your USDT (Tether) wallet',
+      minAmount: 20,
+      processingTime: '1-3 business days',
+      fees: '1% + $1.00'
     }
   ];
 
@@ -85,7 +95,6 @@ const PointsWithdrawalScreen = ({ onBack }) => {
       }
     } catch (error) {
       console.error('Error fetching points balance:', error);
-      // Set fallback balance for demo
       setPointsBalance(1250);
     }
   };
@@ -101,7 +110,6 @@ const PointsWithdrawalScreen = ({ onBack }) => {
         const data = await response.json();
         setWithdrawalHistory(data.withdrawals || []);
       } else {
-        // Fallback demo data if API fails
         setWithdrawalHistory([
           {
             _id: '1',
@@ -141,18 +149,17 @@ const PointsWithdrawalScreen = ({ onBack }) => {
             requestId: 'WD17265432106MNOP',
             amount: 100,
             pointsToDeduct: 1000,
-            method: 'paypal',
+            method: 'usdt',
             status: 'rejected',
             requestedAt: new Date(Date.now() - 86400000 * 10).toISOString(),
             rejectedAt: new Date(Date.now() - 86400000 * 8).toISOString(),
-            rejectionReason: 'Insufficient verification documents',
-            details: { fullName: 'John Doe', paypalEmail: 'user@example.com' }
+            rejectionReason: 'Invalid wallet address',
+            details: { fullName: 'John Doe', usdtWalletAddress: '0x1234567890abcdef1234567890abcdef12345678' }
           }
         ]);
       }
     } catch (error) {
       console.error('Error fetching withdrawal history:', error);
-      // Fallback demo data
       setWithdrawalHistory([
         {
           _id: '1',
@@ -236,17 +243,17 @@ const PointsWithdrawalScreen = ({ onBack }) => {
 
   const validateForm = () => {
     const errors = {};
-    
+
     if (!withdrawalDetails.fullName.trim()) {
       errors.fullName = 'Full name is required';
     }
-    
+
     if (!withdrawalDetails.email.trim()) {
       errors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(withdrawalDetails.email)) {
       errors.email = 'Please enter a valid email';
     }
-    
+
     if (!withdrawalDetails.phone.trim()) {
       errors.phone = 'Phone number is required';
     }
@@ -272,6 +279,12 @@ const PointsWithdrawalScreen = ({ onBack }) => {
       if (!withdrawalDetails.accountHolderName.trim()) {
         errors.accountHolderName = 'Cardholder name is required';
       }
+    } else if (selectedWithdrawalMethod === 'usdt') {
+      if (!withdrawalDetails.usdtWalletAddress.trim()) {
+        errors.usdtWalletAddress = 'USDT wallet address is required';
+      } else if (!/^0x[a-fA-F0-9]{40}$/.test(withdrawalDetails.usdtWalletAddress)) {
+        errors.usdtWalletAddress = 'Please enter a valid Ethereum wallet address (0x followed by 40 hexadecimal characters)';
+      }
     }
 
     setValidationErrors(errors);
@@ -291,8 +304,6 @@ const PointsWithdrawalScreen = ({ onBack }) => {
     const amount = parseFloat(withdrawalAmount);
     const pointsRequired = usdToPoints(amount);
     const selectedMethod = withdrawalMethods.find(m => m.id === selectedWithdrawalMethod);
-    console.log("Amount:", amount, "Points Required:", pointsRequired, "Available Balance:", pointsBalance);
-
 
     // Validation
     if (!amount || amount <= 0) {
@@ -343,6 +354,9 @@ const PointsWithdrawalScreen = ({ onBack }) => {
               cardNumber: withdrawalDetails.accountNumber,
               cardholderName: withdrawalDetails.accountHolderName
             } : null,
+            usdtDetails: selectedWithdrawalMethod === 'usdt' ? {
+              walletAddress: withdrawalDetails.usdtWalletAddress
+            } : null,
             address: {
               street: withdrawalDetails.address,
               city: withdrawalDetails.city,
@@ -358,7 +372,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
 
       if (response.ok) {
         setSuccess(`Withdrawal request submitted successfully! Request ID: ${data.withdrawal.requestId}`);
-        
+
         // Reset form
         setWithdrawalAmount('');
         setWithdrawalDetails({
@@ -375,16 +389,17 @@ const PointsWithdrawalScreen = ({ onBack }) => {
           city: '',
           state: '',
           zipCode: '',
-          country: ''
+          country: '',
+          usdtWalletAddress: ''
         });
         setValidationErrors({});
-        
+
         // Refresh data
         await Promise.all([
           fetchPointsBalance(),
           fetchWithdrawalHistory()
         ]);
-        
+
         // Switch to history tab
         setActiveTab('history');
       } else {
@@ -461,6 +476,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
         return <Building className="w-5 h-5" />;
       case 'card':
         return <CreditCard className="w-5 h-5" />;
+      case 'usdt':
+        return <Wallet className="w-5 h-5" />;
       default:
         return <DollarSign className="w-5 h-5" />;
     }
@@ -526,8 +543,14 @@ const PointsWithdrawalScreen = ({ onBack }) => {
             <p className="text-sm text-green-200 mt-1">
               {pointsBalance.toLocaleString()} points
             </p>
+            {/* 👇 Conversion Rate Note */}
+            <p className="text-xs text-green-100 mt-2 italic">
+              Conversion Rate: 10 points = $1
+            </p>
           </div>
         </div>
+
+
 
         {error && (
           <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-4 flex items-center space-x-2">
@@ -547,22 +570,20 @@ const PointsWithdrawalScreen = ({ onBack }) => {
         <div className="flex bg-gray-900 rounded-lg p-1 mb-6">
           <button
             onClick={() => setActiveTab('withdraw')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'withdraw'
-                ? 'bg-green-600 text-white'
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${activeTab === 'withdraw'
+              ? 'bg-green-600 text-white'
+              : 'text-gray-400 hover:text-white'
+              }`}
           >
             <DollarSign className="w-4 h-4 inline mr-2" />
             Withdraw
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'history'
-                ? 'bg-green-600 text-white'
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${activeTab === 'history'
+              ? 'bg-green-600 text-white'
+              : 'text-gray-400 hover:text-white'
+              }`}
           >
             <History className="w-4 h-4 inline mr-2" />
             History
@@ -609,7 +630,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                 {withdrawalMethods.map((method) => {
                   const IconComponent = method.icon;
                   const isDisabled = withdrawalAmount && parseFloat(withdrawalAmount) < method.minAmount;
-                  
+
                   return (
                     <button
                       key={method.id}
@@ -621,13 +642,12 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                         }
                       }}
                       disabled={isDisabled}
-                      className={`p-4 rounded-lg border-2 transition-all ${
-                        selectedWithdrawalMethod === method.id
-                          ? 'border-green-500 bg-green-600/20'
-                          : isDisabled
+                      className={`p-4 rounded-lg border-2 transition-all ${selectedWithdrawalMethod === method.id
+                        ? 'border-green-500 bg-green-600/20'
+                        : isDisabled
                           ? 'border-gray-700 bg-gray-800 opacity-50 cursor-not-allowed'
                           : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center space-x-3">
                         <IconComponent className="w-6 h-6" />
@@ -654,7 +674,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                 <User className="w-5 h-5 mr-2" />
                 Personal Information
               </h3>
-              
+
               <div className="space-y-4">
                 <div>
                   <input
@@ -662,9 +682,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                     placeholder="Full Name"
                     value={withdrawalDetails.fullName}
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                      validationErrors.fullName ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.fullName ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.fullName && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.fullName}</p>
@@ -677,9 +696,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                     placeholder="Email Address"
                     value={withdrawalDetails.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                      validationErrors.email ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.email ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.email && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.email}</p>
@@ -692,9 +710,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                     placeholder="Phone Number"
                     value={withdrawalDetails.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                      validationErrors.phone ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.phone ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.phone && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.phone}</p>
@@ -710,16 +727,15 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                   <DollarSign className="w-5 h-5 mr-2" />
                   PayPal Information
                 </h3>
-                
+
                 <div>
                   <input
                     type="email"
                     placeholder="PayPal Email Address"
                     value={withdrawalDetails.paypalEmail}
                     onChange={(e) => handleInputChange('paypalEmail', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                      validationErrors.paypalEmail ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.paypalEmail ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.paypalEmail && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.paypalEmail}</p>
@@ -734,7 +750,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                   <Building className="w-5 h-5 mr-2" />
                   Bank Information
                 </h3>
-                
+
                 <div className="space-y-4">
                   <div>
                     <input
@@ -742,9 +758,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                       placeholder="Bank Name"
                       value={withdrawalDetails.bankName}
                       onChange={(e) => handleInputChange('bankName', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                        validationErrors.bankName ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.bankName ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.bankName && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.bankName}</p>
@@ -757,9 +772,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                       placeholder="Account Holder Name"
                       value={withdrawalDetails.accountHolderName}
                       onChange={(e) => handleInputChange('accountHolderName', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                        validationErrors.accountHolderName ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.accountHolderName ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.accountHolderName && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.accountHolderName}</p>
@@ -772,9 +786,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                       placeholder="Account Number"
                       value={withdrawalDetails.accountNumber}
                       onChange={(e) => handleInputChange('accountNumber', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                        validationErrors.accountNumber ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.accountNumber ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.accountNumber && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.accountNumber}</p>
@@ -800,7 +813,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                   <CreditCard className="w-5 h-5 mr-2" />
                   Debit Card Information
                 </h3>
-                
+
                 <div className="space-y-4">
                   <div>
                     <input
@@ -808,9 +821,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                       placeholder="Cardholder Name"
                       value={withdrawalDetails.accountHolderName}
                       onChange={(e) => handleInputChange('accountHolderName', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                        validationErrors.accountHolderName ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.accountHolderName ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.accountHolderName && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.accountHolderName}</p>
@@ -823,14 +835,36 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                       placeholder="Card Number"
                       value={withdrawalDetails.accountNumber}
                       onChange={(e) => handleInputChange('accountNumber', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                        validationErrors.accountNumber ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.accountNumber ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.accountNumber && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.accountNumber}</p>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {selectedWithdrawalMethod === 'usdt' && (
+              <div className="bg-gray-900 rounded-xl p-4">
+                <h3 className="text-lg font-semibold mb-4 flex items-center">
+                  <Wallet className="w-5 h-5 mr-2" />
+                  USDT Wallet Information
+                </h3>
+
+                <div>
+                  <input
+                    type="text"
+                    placeholder="USDT Wallet Address (e.g., 0x1234567890abcdef1234567890abcdef12345678)"
+                    value={withdrawalDetails.usdtWalletAddress}
+                    onChange={(e) => handleInputChange('usdtWalletAddress', e.target.value)}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${validationErrors.usdtWalletAddress ? 'border-red-500' : 'border-gray-700'
+                      }`}
+                  />
+                  {validationErrors.usdtWalletAddress && (
+                    <p className="text-red-400 text-sm mt-1">{validationErrors.usdtWalletAddress}</p>
+                  )}
                 </div>
               </div>
             )}
@@ -885,7 +919,9 @@ const PointsWithdrawalScreen = ({ onBack }) => {
               <div className="text-center py-12">
                 <History className="w-12 h-12 text-gray-600 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-400 mb-2">No Withdrawals Yet</h3>
-                <p className="text-gray-500 mb-4">You haven't made any withdrawal requests yet.</p>
+                <p className="text-gray-500 mb-4">
+                  You haven't made any withdrawal requests yet.
+                </p>
                 <button
                   onClick={() => setActiveTab('withdraw')}
                   className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
@@ -906,13 +942,16 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                         <div>
                           <div className="font-semibold text-lg">${withdrawal.amount}</div>
                           <div className="text-sm text-gray-400">
-                            {withdrawal.method.charAt(0).toUpperCase() + withdrawal.method.slice(1)}
+                            {withdrawal.method.charAt(0).toUpperCase() +
+                              withdrawal.method.slice(1)}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
                         {getStatusIcon(withdrawal.status)}
-                        <span className={`font-medium capitalize ${getStatusColor(withdrawal.status)}`}>
+                        <span
+                          className={`font-medium capitalize ${getStatusColor(withdrawal.status)}`}
+                        >
                           {withdrawal.status}
                         </span>
                       </div>
@@ -923,12 +962,15 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                         <span className="text-gray-400">Request ID:</span>
                         <span className="font-mono">{withdrawal.requestId}</span>
                       </div>
-                      
+
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-400">Points Deducted:</span>
                         <span className="flex items-center space-x-1">
                           <Star className="w-3 h-3 text-yellow-400" />
-                          <span>{withdrawal.pointsToDeduct?.toLocaleString() || (withdrawal.amount * 10).toLocaleString()}</span>
+                          <span>
+                            {withdrawal.pointsToDeduct?.toLocaleString() ||
+                              (withdrawal.amount * 10).toLocaleString()}
+                          </span>
                         </span>
                       </div>
 
@@ -940,21 +982,27 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                       {withdrawal.approvedAt && (
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-400">Approved:</span>
-                          <span className="text-green-400">{formatDate(withdrawal.approvedAt)}</span>
+                          <span className="text-green-400">
+                            {formatDate(withdrawal.approvedAt)}
+                          </span>
                         </div>
                       )}
 
                       {withdrawal.completedAt && (
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-400">Completed:</span>
-                          <span className="text-green-400">{formatDate(withdrawal.completedAt)}</span>
+                          <span className="text-green-400">
+                            {formatDate(withdrawal.completedAt)}
+                          </span>
                         </div>
                       )}
 
                       {withdrawal.rejectedAt && (
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-400">Rejected:</span>
-                          <span className="text-red-400">{formatDate(withdrawal.rejectedAt)}</span>
+                          <span className="text-red-400">
+                            {formatDate(withdrawal.rejectedAt)}
+                          </span>
                         </div>
                       )}
 
@@ -979,7 +1027,9 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                       {/* Payment Details */}
                       {withdrawal.details && (
                         <div className="mt-3 pt-3 border-t border-gray-700">
-                          <div className="text-xs text-gray-500 mb-2">Payment Details:</div>
+                          <div className="text-xs text-gray-500 mb-2">
+                            Payment Details:
+                          </div>
                           <div className="space-y-1 text-sm">
                             {withdrawal.details.fullName && (
                               <div className="flex justify-between">
@@ -987,27 +1037,46 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                                 <span>{withdrawal.details.fullName}</span>
                               </div>
                             )}
-                            
-                            {withdrawal.method === 'paypal' && withdrawal.details.paypalEmail && (
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">PayPal:</span>
-                                <span>{withdrawal.details.paypalEmail}</span>
-                              </div>
-                            )}
-                            
-                            {withdrawal.method === 'bank' && withdrawal.details.bankDetails && (
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Bank:</span>
-                                <span>{withdrawal.details.bankDetails.bankName || withdrawal.details.bankName}</span>
-                              </div>
-                            )}
-                            
-                            {withdrawal.method === 'card' && withdrawal.details.cardDetails && (
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Card:</span>
-                                <span>{withdrawal.details.cardDetails.cardholderName || withdrawal.details.cardholderName}</span>
-                              </div>
-                            )}
+
+                            {withdrawal.method === 'paypal' &&
+                              withdrawal.details.paypalEmail && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">PayPal:</span>
+                                  <span>{withdrawal.details.paypalEmail}</span>
+                                </div>
+                              )}
+
+                            {withdrawal.method === 'bank' &&
+                              withdrawal.details.bankDetails && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Bank:</span>
+                                  <span>
+                                    {withdrawal.details.bankDetails.bankName ||
+                                      withdrawal.details.bankName}
+                                  </span>
+                                </div>
+                              )}
+
+                            {withdrawal.method === 'card' &&
+                              withdrawal.details.cardDetails && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Card:</span>
+                                  <span>
+                                    {withdrawal.details.cardDetails.cardholderName ||
+                                      withdrawal.details.cardholderName}
+                                  </span>
+                                </div>
+                              )}
+
+                            {withdrawal.method === 'usdt' &&
+                              withdrawal.details.usdtDetails && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">USDT Wallet:</span>
+                                  <span className="font-mono truncate w-40">
+                                    {withdrawal.details.usdtDetails.walletAddress}
+                                  </span>
+                                </div>
+                              )}
                           </div>
                         </div>
                       )}
@@ -1043,8 +1112,9 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-400">
-                      ${withdrawalHistory
-                        .filter(w => w.status === 'completed')
+                      $
+                      {withdrawalHistory
+                        .filter((w) => w.status === 'completed')
                         .reduce((sum, w) => sum + w.amount, 0)
                         .toFixed(2)}
                     </div>
@@ -1054,8 +1124,9 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-yellow-400">
-                      ${withdrawalHistory
-                        .filter(w => w.status === 'pending')
+                      $
+                      {withdrawalHistory
+                        .filter((w) => w.status === 'pending')
                         .reduce((sum, w) => sum + w.amount, 0)
                         .toFixed(2)}
                     </div>
@@ -1066,6 +1137,8 @@ const PointsWithdrawalScreen = ({ onBack }) => {
             )}
           </div>
         )}
+
+
       </div>
     </div>
   );

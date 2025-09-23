@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Bell, User, UserCheck, UserX, Clock, Heart, MessageCircle, UserPlus } from 'lucide-react';
+import { ArrowLeft, Bell, User, UserCheck, UserX, Clock, Heart, MessageCircle, UserPlus, DollarSign, CheckCircle } from 'lucide-react';
 
 const NotificationsScreen = ({ onBack }) => {
   const [followRequests, setFollowRequests] = useState([]);
+  const [withdrawalNotifications, setWithdrawalNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingRequest, setProcessingRequest] = useState(null);
 
@@ -17,30 +18,38 @@ const NotificationsScreen = ({ onBack }) => {
     };
   };
 
-  // Fetch follow requests
+  // Fetch follow requests and withdrawal notifications
   useEffect(() => {
-    fetchFollowRequests();
-  }, []);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [followResponse, withdrawalResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/follow/requests`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE_URL}/notifications/withdrawals`, { headers: getAuthHeaders() })
+        ]);
 
-  const fetchFollowRequests = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/follow/requests`, {
-        headers: getAuthHeaders()
-      });
+        if (followResponse.ok) {
+          const requests = await followResponse.json();
+          setFollowRequests(requests);
+        } else {
+          console.error('Failed to fetch follow requests');
+        }
 
-      if (response.ok) {
-        const requests = await response.json();
-        setFollowRequests(requests);
-      } else {
-        console.error('Failed to fetch follow requests');
+        if (withdrawalResponse.ok) {
+          const notifications = await withdrawalResponse.json();
+          setWithdrawalNotifications(notifications);
+        } else {
+          console.error('Failed to fetch withdrawal notifications');
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching follow requests:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchData();
+  }, []);
 
   // Accept follow request
   const acceptRequest = async (requestId) => {
@@ -52,7 +61,6 @@ const NotificationsScreen = ({ onBack }) => {
       });
 
       if (response.ok) {
-        // Remove the request from the list
         setFollowRequests(prev => prev.filter(req => req._id !== requestId));
       } else {
         const error = await response.json();
@@ -76,7 +84,6 @@ const NotificationsScreen = ({ onBack }) => {
       });
 
       if (response.ok) {
-        // Remove the request from the list
         setFollowRequests(prev => prev.filter(req => req._id !== requestId));
       } else {
         const error = await response.json();
@@ -125,9 +132,9 @@ const NotificationsScreen = ({ onBack }) => {
           <div className="flex items-center space-x-2">
             <Bell className="w-6 h-6" />
             <h1 className="text-xl font-bold">Notifications</h1>
-            {followRequests.length > 0 && (
+            {(followRequests.length + withdrawalNotifications.length) > 0 && (
               <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                {followRequests.length}
+                {followRequests.length + withdrawalNotifications.length}
               </span>
             )}
           </div>
@@ -154,7 +161,7 @@ const NotificationsScreen = ({ onBack }) => {
               </div>
             ))}
           </div>
-        ) : followRequests.length === 0 ? (
+        ) : (followRequests.length + withdrawalNotifications.length) === 0 ? (
           // Empty state
           <div className="text-center py-12">
             <div className="bg-gray-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -164,64 +171,95 @@ const NotificationsScreen = ({ onBack }) => {
             <p className="text-gray-400">Follow requests and other notifications will appear here</p>
           </div>
         ) : (
-          // Follow requests list
+          // Notifications list
           <div>
-            <h2 className="text-lg font-bold mb-4 flex items-center">
-              <UserPlus className="w-5 h-5 mr-2 text-pink-500" />
-              Follow Requests ({followRequests.length})
-            </h2>
-            
-            <div className="space-y-3">
-              {followRequests.map((request) => (
-                <div key={request._id} className="bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors">
-                  <div className="flex items-center space-x-3">
-                    {/* User Avatar and Info */}
-                    <button
-                      onClick={() => goToProfile(request.requester._id)}
-                      className="flex items-center space-x-3 flex-1"
-                    >
-                      <img
-                        src={request.requester.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(request.requester.username)}&background=random&color=fff&size=200&bold=true`}
-                        alt={request.requester.username}
-                        className="w-12 h-12 rounded-full object-cover"
-                        onError={(e) => {
-                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(request.requester.username)}&background=random&color=fff&size=200&bold=true`;
-                        }}
-                      />
-                      <div className="text-left">
-                        <p className="font-bold text-white">{request.requester.username}</p>
-                        <p className="text-gray-400 text-sm">wants to follow you</p>
-                        <div className="flex items-center text-xs text-gray-500 mt-1">
-                          <Clock className="w-3 h-3 mr-1" />
-                          {formatTimeAgo(request.createdAt)}
+            {/* Follow Requests */}
+            {followRequests.length > 0 && (
+              <div>
+                <h2 className="text-lg font-bold mb-4 flex items-center">
+                  <UserPlus className="w-5 h-5 mr-2 text-pink-500" />
+                  Follow Requests ({followRequests.length})
+                </h2>
+                <div className="space-y-3">
+                  {followRequests.map((request) => (
+                    <div key={request._id} className="bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={() => goToProfile(request.requester._id)}
+                          className="flex items-center space-x-3 flex-1"
+                        >
+                          <img
+                            src={request.requester.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(request.requester.username)}&background=random&color=fff&size=200&bold=true`}
+                            alt={request.requester.username}
+                            className="w-12 h-12 rounded-full object-cover"
+                            onError={(e) => {
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(request.requester.username)}&background=random&color=fff&size=200&bold=true`;
+                            }}
+                          />
+                          <div className="text-left">
+                            <p className="font-bold text-white">{request.requester.username}</p>
+                            <p className="text-gray-400 text-sm">wants to follow you</p>
+                            <div className="flex items-center text-xs text-gray-500 mt-1">
+                              <Clock className="w-3 h-3 mr-1" />
+                              {formatTimeAgo(request.createdAt)}
+                            </div>
+                          </div>
+                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => acceptRequest(request._id)}
+                            disabled={processingRequest === request._id}
+                            className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 disabled:opacity-50"
+                          >
+                            <UserCheck className="w-4 h-4" />
+                            <span>Accept</span>
+                          </button>
+                          <button
+                            onClick={() => rejectRequest(request._id)}
+                            disabled={processingRequest === request._id}
+                            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 disabled:opacity-50"
+                          >
+                            <UserX className="w-4 h-4" />
+                            <span>Reject</span>
+                          </button>
                         </div>
                       </div>
-                    </button>
-
-                    {/* Action Buttons */}
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => acceptRequest(request._id)}
-                        disabled={processingRequest === request._id}
-                        className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 disabled:opacity-50"
-                      >
-                        <UserCheck className="w-4 h-4" />
-                        <span>Accept</span>
-                      </button>
-                      
-                      <button
-                        onClick={() => rejectRequest(request._id)}
-                        disabled={processingRequest === request._id}
-                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-1 disabled:opacity-50"
-                      >
-                        <UserX className="w-4 h-4" />
-                        <span>Reject</span>
-                      </button>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {/* Withdrawal Notifications */}
+            {withdrawalNotifications.length > 0 && (
+              <div className={followRequests.length > 0 ? 'mt-8' : ''}>
+                <h2 className="text-lg font-bold mb-4 flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2 text-green-500" />
+                  Withdrawal Notifications ({withdrawalNotifications.length})
+                </h2>
+                <div className="space-y-3">
+                  {withdrawalNotifications.map((notification) => (
+                    <div key={notification._id} className="bg-gray-900 p-4 rounded-xl hover:bg-gray-800 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 bg-green-900/30 rounded-full flex items-center justify-center">
+                          <CheckCircle className="w-6 h-6 text-green-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-white">Withdrawal Approved</p>
+                          <p className="text-gray-400 text-sm">
+                            Your withdrawal request of ${notification.withdrawalAmount} via {notification.method} has been approved!
+                          </p>
+                          <div className="flex items-center text-xs text-gray-500 mt-1">
+                            <Clock className="w-3 h-3 mr-1" />
+                            {formatTimeAgo(notification.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

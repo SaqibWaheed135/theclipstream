@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, DollarSign, Star, Gift, History, CheckCircle, XCircle, Clock, User, Mail, Phone, MapPin, Calendar, Lock, Upload } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, CreditCard, DollarSign, Star, Gift, History, CheckCircle, XCircle, Clock, User, Mail, Phone, MapPin, Calendar, Lock, Upload, Copy, QrCode, ExternalLink, RefreshCw } from 'lucide-react';
+import { QRCodeCanvas } from "qrcode.react";
 
 const PointsRechargeScreen = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('recharge');
@@ -9,37 +10,37 @@ const PointsRechargeScreen = ({ onBack }) => {
   const [history, setHistory] = useState([]);
   const [selectedAmount, setSelectedAmount] = useState(null);
   const [customAmount, setCustomAmount] = useState('');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('card');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('usdt');
   const [showCheckout, setShowCheckout] = useState(false);
+  const [showUsdtPayment, setShowUsdtPayment] = useState(false);
+  const [usdtPaymentData, setUsdtPaymentData] = useState(null);
+  const [paymentStatus, setPaymentStatus] = useState('pending');
+  const [countdown, setCountdown] = useState(0);
+  const [timerInterval, setTimerInterval] = useState(null);
+  const [copyMsg, setCopyMsg] = useState('');
+  const [checkingPayment, setCheckingPayment] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState({
-    // User Details
     fullName: '',
     email: '',
     phone: '',
-    
-    // Billing Address (for card)
     address: '',
     city: '',
     state: '',
     zipCode: '',
     country: '',
-    
-    // Card Details (for card payments)
     cardNumber: '',
     expiryDate: '',
     cvv: '',
     cardholderName: '',
-    
-    // PayPal Details
     paypalEmail: '',
-    
-    // Bank Transfer Proof
-    transactionScreenshot: null, // File object for screenshot
-    transactionId: '', // User's transaction reference
+    transactionScreenshot: null,
+    transactionId: '',
   });
   const [validationErrors, setValidationErrors] = useState({});
+  const hasAlertedRef = useRef(false); // New ref to track if alert has been shown
+  const pollingIntervalRef = useRef(null); // New ref to store polling interval
 
-  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const API_BASE_URL = 'http://localhost:5002/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -49,7 +50,6 @@ const PointsRechargeScreen = ({ onBack }) => {
     };
   };
 
-  // Predefined recharge amounts (in dollars)
   const rechargeOptions = [
     { amount: 5, points: 50, popular: false, bonus: 0 },
     { amount: 10, points: 100, popular: true, bonus: 10 },
@@ -59,30 +59,28 @@ const PointsRechargeScreen = ({ onBack }) => {
   ];
 
   const paymentMethods = [
-    // { id: 'card', name: 'Credit/Debit Card', icon: CreditCard },
-    // { id: 'paypal', name: 'PayPal', icon: DollarSign },
-    // { id: 'apple', name: 'Apple Pay', icon: Star },
-    { id: 'bank', name: 'Bank Transfer', icon: Gift },
+    { id: 'usdt', name: 'USDT (TRC20)', icon: DollarSign, description: 'Fast & secure crypto payment' },
+    { id: 'bank', name: 'Bank Transfer', icon: Gift, description: 'Manual verification required' },
   ];
+
   const getCategoryForIcon = (transaction) => {
-    return transaction.category || 
-           (transaction.status && `recharge_${transaction.status}`) || 
-           transaction.type || 
-           'unknown';
+    return transaction.category ||
+      (transaction.status && `recharge_${transaction.status}`) ||
+      transaction.type ||
+      'unknown';
   };
 
-  // Helper function to safely get category/type for colors
   const getCategoryForColor = (transaction) => {
-    return transaction.category || 
-           (transaction.status && `recharge_${transaction.status}`) || 
-           transaction.type || 
-           'unknown';
+    return transaction.category ||
+      (transaction.status && `recharge_${transaction.status}`) ||
+      transaction.type ||
+      'unknown';
   };
 
-  // ✅ Transaction Icon Function - MOVED UP
   const getTransactionIcon = (category) => {
     switch (category) {
       case 'recharge_approved':
+      case 'usdt_recharge_approved':
       case 'recharge':
       case 'credit':
         return <CheckCircle className="w-5 h-5 text-green-400" />;
@@ -103,10 +101,10 @@ const PointsRechargeScreen = ({ onBack }) => {
     }
   };
 
-  // ✅ Transaction Color Function - MOVED UP
   const getTransactionColor = (category) => {
     switch (category) {
       case 'recharge_approved':
+      case 'usdt_recharge_approved':
       case 'recharge':
       case 'award':
       case 'bonus':
@@ -124,7 +122,6 @@ const PointsRechargeScreen = ({ onBack }) => {
     }
   };
 
-  // ✅ Format Date Function - MOVED UP
   const formatDate = (dateString) => {
     if (!dateString) return 'Invalid date';
     const date = new Date(dateString);
@@ -138,7 +135,12 @@ const PointsRechargeScreen = ({ onBack }) => {
     });
   };
 
-  // App's bank details for manual transfer (hardcoded for demo; in real app, fetch from backend)
+  const formatTime = (seconds) => {
+    const m = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const s = String(seconds % 60).padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
   const appBankDetails = {
     bankName: 'Example Bank',
     accountNumber: '1234567890',
@@ -148,7 +150,6 @@ const PointsRechargeScreen = ({ onBack }) => {
     instructions: 'Please transfer the amount to this account and upload the transaction screenshot/receipt.'
   };
 
-  // Fetch points balance
   const fetchPointsBalance = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/users/points/balance`, {
@@ -164,95 +165,44 @@ const PointsRechargeScreen = ({ onBack }) => {
     }
   };
 
-  // Fetch points history
-  // In PointsRechargeScreen component - Update fetchPointsHistory
-const fetchPointsHistory = async () => {
-  try {
-    // Get user ID from token or localStorage
-    const token = localStorage.getItem("token");
-    const userId = token ? JSON.parse(atob(token.split('.')[1])).id : null;
-    
-    const response = await fetch(`${API_BASE_URL}/recharges/history?userId=${userId}`, {
-      headers: getAuthHeaders()
-    });
+  const fetchPointsHistory = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const userId = token ? JSON.parse(atob(token.split('.')[1])).id : null;
 
-    if (response.ok) {
-      const data = await response.json();
-      console.log('Points history response:', data);
-      
-      // Map recharges to transaction format expected by frontend
-      const mappedHistory = (data.recharges || []).map(recharge => ({
-        _id: recharge._id,
-        transactionId: recharge.requestId,
-        type: recharge.status === 'approved' ? 'credit' : 'pending',
-        category: `recharge_${recharge.status}`,
-        amount: recharge.pointsToAdd,
-        balanceBefore: 0, // You might want to calculate this
-        balanceAfter: recharge.pointsToAdd, // Simplified
-        description: `Recharge ${recharge.status}: $${recharge.amount}`,
-        createdAt: recharge.requestedAt,
-        metadata: {
-          rechargeId: recharge._id,
-          status: recharge.status
-        }
-      }));
-      
-      setHistory(mappedHistory);
-    } else {
-      console.error('Failed to fetch history:', await response.text());
+      const response = await fetch(`${API_BASE_URL}/recharges/history?userId=${userId}`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const mappedHistory = (data.recharges || []).map(recharge => ({
+          _id: recharge._id,
+          transactionId: recharge.requestId,
+          type: recharge.status === 'approved' ? 'credit' : 'pending',
+          category: `recharge_${recharge.status}`,
+          amount: recharge.pointsToAdd,
+          balanceBefore: 0,
+          balanceAfter: recharge.pointsToAdd,
+          description: `${recharge.method.toUpperCase()} Recharge ${recharge.status}: $${recharge.amount}`,
+          createdAt: recharge.requestedAt,
+          metadata: {
+            rechargeId: recharge._id,
+            status: recharge.status,
+            method: recharge.method
+          }
+        }));
+        setHistory(mappedHistory);
+      } else {
+        console.error('Failed to fetch history:', await response.text());
+        setHistory([]);
+      }
+    } catch (error) {
+      console.error('Error fetching points history:', error);
       setHistory([]);
     }
-  } catch (error) {
-    console.error('Error fetching points history:', error);
-    setHistory([]);
-  }
-};
+  };
 
-// Update the history rendering section (around line 1729 where the error occurs)
-{activeTab === 'history' && (
-  <div>
-    {/* Add null check for history */}
-    {(!history || history.length === 0) ? (
-      <div className="text-center py-12">
-        <History className="w-16 h-16 mx-auto mb-4 text-gray-600" />
-        <p className="text-gray-400 text-lg mb-2">No transaction history</p>
-        <p className="text-gray-500">Your points transactions will appear here</p>
-      </div>
-    ) : (
-      <div className="space-y-3">
-        {history.map((transaction, index) => (
-          <div
-            key={transaction._id || transaction.transactionId || index} // Use index as fallback
-            className="bg-gray-900 rounded-lg p-4"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                {getTransactionIcon(transaction.category || transaction.type)}
-                <div>
-                  <p className="font-medium">{transaction.description || transaction.categoryDisplay || 'Transaction'}</p>
-                  <p className="text-sm text-gray-400">
-                    {formatDate(transaction.createdAt || transaction.requestedAt)}
-                  </p>
-                  {transaction.transactionId && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      ID: {transaction.transactionId}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="text-right">
-                <p className={`font-bold text-lg ${getTransactionColor(transaction.type || transaction.category)}`}>
-                  {transaction.amount > 0 ? '+' : ''}{transaction.amount || transaction.pointsToAdd}
-                </p>
-                <p className="text-xs text-gray-400">points</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    )}
-  </div>
-)}
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -262,12 +212,11 @@ const fetchPointsHistory = async () => {
       ]);
       setLoading(false);
     };
-
     loadData();
   }, []);
 
   const calculatePoints = (amount) => {
-    const basePoints = amount * 10; // 1 dollar = 10 points
+    const basePoints = amount * 10;
     const option = rechargeOptions.find(opt => opt.amount === amount);
     const bonus = option?.bonus || 0;
     return basePoints + bonus;
@@ -275,23 +224,19 @@ const fetchPointsHistory = async () => {
 
   const validateForm = () => {
     const errors = {};
-    
-    // Common validations
-    if (!paymentDetails.fullName.trim()) {
-      errors.fullName = 'Full name is required';
+    if (selectedPaymentMethod !== 'usdt') {
+      if (!paymentDetails.fullName.trim()) {
+        errors.fullName = 'Full name is required';
+      }
+      if (!paymentDetails.email.trim()) {
+        errors.email = 'Email is required';
+      } else if (!/\S+@\S+\.\S+/.test(paymentDetails.email)) {
+        errors.email = 'Please enter a valid email';
+      }
+      if (!paymentDetails.phone.trim()) {
+        errors.phone = 'Phone number is required';
+      }
     }
-    
-    if (!paymentDetails.email.trim()) {
-      errors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(paymentDetails.email)) {
-      errors.email = 'Please enter a valid email';
-    }
-    
-    if (!paymentDetails.phone.trim()) {
-      errors.phone = 'Phone number is required';
-    }
-
-    // Payment method specific validations
     if (selectedPaymentMethod === 'card') {
       if (!paymentDetails.cardNumber.trim()) {
         errors.cardNumber = 'Card number is required';
@@ -305,8 +250,6 @@ const fetchPointsHistory = async () => {
       if (!paymentDetails.cardholderName.trim()) {
         errors.cardholderName = 'Cardholder name is required';
       }
-      
-      // Address for card payments
       if (!paymentDetails.address.trim()) {
         errors.address = 'Billing address is required';
       }
@@ -330,15 +273,12 @@ const fetchPointsHistory = async () => {
         errors.transactionScreenshot = 'Transaction screenshot is required';
       }
     }
-
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleInputChange = (field, value) => {
     setPaymentDetails(prev => ({ ...prev, [field]: value }));
-    
-    // Clear validation error when user starts typing
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -377,141 +317,197 @@ const fetchPointsHistory = async () => {
     return v;
   };
 
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopyMsg('Copied!');
+      setTimeout(() => setCopyMsg(''), 2000);
+    }).catch(() => {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopyMsg('Copied!');
+      setTimeout(() => setCopyMsg(''), 2000);
+    });
+  };
+
+  const createUsdtOrder = async (amount) => {
+    try {
+      setRecharging(true);
+      const response = await fetch(`${API_BASE_URL}/recharges/usdt/create-order`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ amount })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setUsdtPaymentData(data.data);
+        setShowUsdtPayment(true);
+        setPaymentStatus('pending');
+        hasAlertedRef.current = false; // Reset alert flag for new order
+
+        const exp = new Date(data.data.expiresAt).getTime();
+        const now = Date.now();
+        const diff = Math.max(0, Math.floor((exp - now) / 1000));
+        setCountdown(diff);
+
+        if (timerInterval) clearInterval(timerInterval);
+        const iv = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(iv);
+              setPaymentStatus('expired');
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        setTimerInterval(iv);
+
+        startPaymentStatusCheck(data.data.orderId);
+      } else {
+        alert(data.errors?.[0]?.msg || data.msg || 'Failed to create USDT order');
+      }
+    } catch (error) {
+      console.error('Error creating USDT order:', error);
+      alert('Failed to create USDT payment order');
+    } finally {
+      setRecharging(false);
+    }
+  };
+
+  const checkUsdtPayment = async (orderId) => {
+    try {
+      setCheckingPayment(true);
+      const response = await fetch(`${API_BASE_URL}/recharges/usdt/check-payment`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ orderId })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.status === 'approved') {
+        setPaymentStatus('approved');
+        if (!hasAlertedRef.current) {
+          alert('Payment confirmed! Points have been added to your account.');
+          hasAlertedRef.current = true; // Set flag to prevent further alerts
+        }
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current); // Clear polling interval
+          pollingIntervalRef.current = null;
+        }
+        await fetchPointsBalance();
+        await fetchPointsHistory();
+        resetForm();
+        setActiveTab('history');
+      } else if (data.status === 'expired') {
+        setPaymentStatus('expired');
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current); // Clear polling interval
+          pollingIntervalRef.current = null;
+        }
+        if (!hasAlertedRef.current) {
+          alert('Order expired');
+          hasAlertedRef.current = true; // Set flag to prevent further alerts
+        }
+      } else {
+        setPaymentStatus(data.status || 'pending');
+      }
+    } catch (error) {
+      console.error('Error checking payment:', error);
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
+
+  const startPaymentStatusCheck = (orderId) => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current); // Clear any existing interval
+    }
+    pollingIntervalRef.current = setInterval(async () => {
+      if (paymentStatus === 'approved' || paymentStatus === 'expired') {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+        return;
+      }
+      await checkUsdtPayment(orderId);
+    }, 10000);
+
+    setTimeout(() => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      if (paymentStatus !== 'approved') {
+        setPaymentStatus('expired');
+        if (!hasAlertedRef.current) {
+          alert('Order expired');
+          hasAlertedRef.current = true;
+        }
+      }
+    }, 15 * 60 * 1000);
+  };
+
   const proceedToCheckout = () => {
     const amount = selectedAmount || parseFloat(customAmount);
-    
+
     if (!amount || amount <= 0) {
       alert('Please select or enter a valid amount');
       return;
     }
-
     if (amount < 1) {
       alert('Minimum recharge amount is $1');
       return;
     }
-
     if (amount > 500) {
       alert('Maximum recharge amount is $500');
       return;
     }
-
-    setShowCheckout(true);
+    if (selectedPaymentMethod === 'usdt') {
+      createUsdtOrder(amount);
+    } else {
+      setShowCheckout(true);
+    }
   };
 
- // In your PointsRechargeScreen component, update the handleRecharge function
-const handleRecharge = async () => {
-  if (!validateForm()) {
-    alert('Please fill in all required fields correctly');
-    return;
-  }
-
-  const amount = selectedAmount || parseFloat(customAmount);
-  const pointsToAdd = calculatePoints(amount);
-  setRecharging(true);
-
-  try {
-    let response;
-    if (selectedPaymentMethod === 'bank') {
-      // For bank transfer, create a recharge request with screenshot
-      const formData = new FormData();
-      formData.append('amount', amount.toString());
-      formData.append('pointsToAdd', pointsToAdd.toString());
-      formData.append('method', selectedPaymentMethod);
-      
-      // Stringify the details object
-      const detailsObj = {
-        fullName: paymentDetails.fullName,
-        email: paymentDetails.email,
-        phone: paymentDetails.phone,
-        transactionId: paymentDetails.transactionId,
-      };
-      formData.append('details', JSON.stringify(detailsObj));
-      
-      // Append the screenshot file
-      if (paymentDetails.transactionScreenshot) {
-        formData.append('transactionScreenshot', paymentDetails.transactionScreenshot);
-      }
-
-      // Log FormData contents for debugging (remove in production)
-      console.log('FormData contents:');
-      for (let [key, value] of formData.entries()) {
-        console.log(key, value);
-      }
-
-      response = await fetch(`${API_BASE_URL}/recharges/request`, {
-        method: 'POST',
-        headers: {
-          'Authorization': getAuthHeaders().Authorization,
-          // Don't set Content-Type for FormData - let browser set it with boundary
-        },
-        body: formData,
-      });
-    } else {
-      // For other methods, simulate/process payment as before
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      response = await fetch(`${API_BASE_URL}/users/points/recharge`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          amount,
-          paymentMethod: selectedPaymentMethod,
-          paymentDetails: paymentDetails,
-          transactionId: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        })
-      });
+  const resetForm = () => {
+    setSelectedAmount(null);
+    setCustomAmount('');
+    setShowCheckout(false);
+    setShowUsdtPayment(false);
+    setUsdtPaymentData(null);
+    setPaymentStatus('pending');
+    setCountdown(0);
+    if (timerInterval) clearInterval(timerInterval);
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
-
-    const data = await response.json();
-
-    if (response.ok) {
-      if (selectedPaymentMethod === 'bank') {
-        alert('Recharge request submitted successfully! Waiting for admin approval.');
-        // You might want to refresh the history here
-        await fetchPointsHistory();
-      } else {
-        setPointsBalance(data.newBalance);
-        alert(`Successfully recharged ${data.pointsAdded} points!`);
-      }
-      
-      // Reset form
-      setSelectedAmount(null);
-      setCustomAmount('');
-      setShowCheckout(false);
-      setPaymentDetails({
-        fullName: '',
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        state: '',
-        zipCode: '',
-        country: '',
-        cardNumber: '',
-        expiryDate: '',
-        cvv: '',
-        cardholderName: '',
-        paypalEmail: '',
-        transactionScreenshot: null,
-        transactionId: '',
-      });
-      setValidationErrors({});
-      
-      // Switch to history tab to show the transaction
-      setActiveTab('history');
-    } else {
-      console.error('Response data:', data);
-      alert(data.msg || data.errors?.[0]?.msg || 'Recharge failed. Please try again.');
-    }
-  } catch (error) {
-    console.error('Error during recharge:', error);
-    alert('Recharge failed. Please try again.');
-  } finally {
-    setRecharging(false);
-  }
-};
- 
-
+    setPaymentDetails({
+      fullName: '',
+      email: '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      country: '',
+      cardNumber: '',
+      expiryDate: '',
+      cvv: '',
+      cardholderName: '',
+      paypalEmail: '',
+      transactionScreenshot: null,
+      transactionId: '',
+    });
+    setValidationErrors({});
+    hasAlertedRef.current = false; // Reset alert flag
+  };
 
   if (loading) {
     return (
@@ -524,10 +520,187 @@ const handleRecharge = async () => {
     );
   }
 
+  if (showUsdtPayment && usdtPaymentData) {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => {
+                  setShowUsdtPayment(false);
+                  setUsdtPaymentData(null);
+                  if (timerInterval) clearInterval(timerInterval);
+                  if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+                }}
+                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <h1 className="text-xl font-bold">USDT Payment</h1>
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-bold text-yellow-400">
+                {usdtPaymentData.amount} USDT
+              </div>
+              <p className="text-xs text-gray-400">
+                {usdtPaymentData.pointsToAdd.toLocaleString()} points
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 max-w-md mx-auto">
+          <div className={`rounded-xl p-4 mb-6 ${paymentStatus === 'approved' ? 'bg-green-900/50 border border-green-500' :
+              paymentStatus === 'expired' ? 'bg-red-900/50 border border-red-500' :
+                'bg-yellow-900/50 border border-yellow-500'
+            }`}>
+            <div className="text-center">
+              {paymentStatus === 'approved' ? (
+                <>
+                  <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-2" />
+                  <h3 className="text-lg font-bold text-green-400">Payment Confirmed!</h3>
+                  <p className="text-green-300">Points have been added to your account</p>
+                </>
+              ) : paymentStatus === 'expired' ? (
+                <>
+                  <XCircle className="w-12 h-12 text-red-400 mx-auto mb-2" />
+                  <h3 className="text-lg font-bold text-red-400">Order Expired</h3>
+                  <p className="text-red-300">Please create a new order</p>
+                </>
+              ) : (
+                <>
+                  <Clock className="w-12 h-12 text-yellow-400 mx-auto mb-2" />
+                  <h3 className="text-lg font-bold text-yellow-400">Waiting for Payment</h3>
+                  <p className="text-yellow-300">Send USDT to the address below</p>
+                </>
+              )}
+            </div>
+          </div>
+
+          {paymentStatus === 'pending' && (
+            <>
+              <div className="bg-gray-900 rounded-xl p-4 mb-6 text-center">
+                <h3 className="text-lg font-semibold mb-4">Scan QR Code</h3>
+                <div className="bg-white p-4 rounded-lg inline-block">
+                  <QRCodeCanvas
+                    value={`tron:${usdtPaymentData.walletAddress}?amount=${usdtPaymentData.amount}`}
+                    size={180}
+                    includeMargin={true}
+                  />
+
+                </div>
+                <p className="text-gray-400 text-sm mt-2">Scan with your USDT wallet</p>
+              </div>
+
+              <div className="bg-gray-900 rounded-xl p-4 mb-6">
+                <h3 className="text-lg font-semibold mb-4">Wallet Address (TRC20)</h3>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-mono break-all text-gray-300 flex-1">
+                    {usdtPaymentData.walletAddress}
+                  </p>
+                  <button
+                    onClick={() => copyToClipboard(usdtPaymentData.walletAddress)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-sm flex items-center"
+                  >
+                    <Copy className="w-4 h-4 mr-1" />
+                    Copy
+                  </button>
+                </div>
+                {copyMsg && <p className="text-green-600 text-sm mt-1">{copyMsg}</p>}
+              </div>
+
+              <div className="bg-gray-900 rounded-xl p-4 mb-6">
+                <h3 className="text-lg font-semibold mb-4">Payment Details</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Requested Amount:</span>
+                    <span className="font-bold">{usdtPaymentData.originalAmount} USDT</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Payable Amount:</span>
+                    <span className="font-bold text-red-400">{usdtPaymentData.amount} USDT</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Network:</span>
+                    <span className="font-bold">TRC20 (Tron)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Points:</span>
+                    <span className="font-bold text-yellow-400">{usdtPaymentData.pointsToAdd.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Order ID:</span>
+                    <span className="font-mono text-sm">{usdtPaymentData.orderId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Expires in:</span>
+                    <span className="font-bold">{formatTime(countdown)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-red-900/20 border border-red-500 rounded-lg p-4 mb-6">
+                <p className="text-red-300 text-sm text-center">
+                  ⚠️ Send exactly {usdtPaymentData.amount} USDT (otherwise payment won’t be detected)
+                </p>
+              </div>
+
+              <div className="bg-gray-900 rounded-xl p-4 mb-6">
+                <h3 className="text-lg font-semibold mb-4">Instructions</h3>
+                <div className="space-y-2 text-sm text-gray-300">
+                  <p>1. Send exactly <strong>{usdtPaymentData.amount} USDT</strong> to the wallet address above</p>
+                  <p>2. Make sure to use the <strong>TRC20 network</strong></p>
+                  <p>3. Payment will be confirmed automatically within 1-5 minutes</p>
+                  <p>4. Points will be added to your account once confirmed</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => checkUsdtPayment(usdtPaymentData.orderId)}
+                disabled={checkingPayment}
+                className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed mb-6 flex items-center justify-center space-x-2"
+              >
+                {checkingPayment ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Checking...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-5 h-5" />
+                    <span>Check Payment Status</span>
+                  </>
+                )}
+              </button>
+
+              {usdtPaymentData.paymentUrl && (
+                <a
+                  href={usdtPaymentData.paymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold mb-6 flex items-center justify-center space-x-2"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                  <span>Open in Wallet</span>
+                </a>
+              )}
+
+              <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                <p className="text-red-300 text-sm text-center">
+                  ⚠️ Only send USDT on TRC20 network. Sending other tokens or using wrong network will result in loss of funds.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (showCheckout) {
     return (
       <div className="min-h-screen bg-black text-white">
-        {/* Checkout Header */}
         <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -551,7 +724,6 @@ const handleRecharge = async () => {
         </div>
 
         <div className="p-4 max-w-md mx-auto">
-          {/* Order Summary */}
           <div className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl p-6 mb-6">
             <div className="text-center text-white">
               <h3 className="text-lg font-bold mb-2">Order Summary</h3>
@@ -572,15 +744,13 @@ const handleRecharge = async () => {
             </div>
           </div>
 
-          {/* Payment Form */}
           <div className="space-y-6">
-            {/* Personal Information */}
             <div className="bg-gray-900 rounded-xl p-4">
               <h3 className="text-lg font-semibold mb-4 flex items-center">
                 <User className="w-5 h-5 mr-2" />
                 Personal Information
               </h3>
-              
+
               <div className="space-y-4">
                 <div>
                   <input
@@ -588,9 +758,8 @@ const handleRecharge = async () => {
                     placeholder="Full Name"
                     value={paymentDetails.fullName}
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                      validationErrors.fullName ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.fullName ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.fullName && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.fullName}</p>
@@ -603,9 +772,8 @@ const handleRecharge = async () => {
                     placeholder="Email Address"
                     value={paymentDetails.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                      validationErrors.email ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.email ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.email && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.email}</p>
@@ -618,9 +786,8 @@ const handleRecharge = async () => {
                     placeholder="Phone Number"
                     value={paymentDetails.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                      validationErrors.phone ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.phone ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.phone && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.phone}</p>
@@ -629,14 +796,13 @@ const handleRecharge = async () => {
               </div>
             </div>
 
-            {/* Payment Method Specific Fields */}
             {selectedPaymentMethod === 'card' && (
               <div className="bg-gray-900 rounded-xl p-4">
                 <h3 className="text-lg font-semibold mb-4 flex items-center">
                   <CreditCard className="w-5 h-5 mr-2" />
                   Card Information
                 </h3>
-                
+
                 <div className="space-y-4">
                   <div>
                     <input
@@ -644,9 +810,8 @@ const handleRecharge = async () => {
                       placeholder="Cardholder Name"
                       value={paymentDetails.cardholderName}
                       onChange={(e) => handleInputChange('cardholderName', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                        validationErrors.cardholderName ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.cardholderName ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.cardholderName && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.cardholderName}</p>
@@ -660,9 +825,8 @@ const handleRecharge = async () => {
                       value={paymentDetails.cardNumber}
                       onChange={(e) => handleInputChange('cardNumber', formatCardNumber(e.target.value))}
                       maxLength="19"
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                        validationErrors.cardNumber ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.cardNumber ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.cardNumber && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.cardNumber}</p>
@@ -677,9 +841,8 @@ const handleRecharge = async () => {
                         value={paymentDetails.expiryDate}
                         onChange={(e) => handleInputChange('expiryDate', formatExpiryDate(e.target.value))}
                         maxLength="5"
-                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                          validationErrors.expiryDate ? 'border-red-500' : 'border-gray-700'
-                        }`}
+                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.expiryDate ? 'border-red-500' : 'border-gray-700'
+                          }`}
                       />
                       {validationErrors.expiryDate && (
                         <p className="text-red-400 text-sm mt-1">{validationErrors.expiryDate}</p>
@@ -691,9 +854,8 @@ const handleRecharge = async () => {
                         placeholder="CVV"
                         value={paymentDetails.cvv}
                         onChange={(e) => handleInputChange('cvv', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                          validationErrors.cvv ? 'border-red-500' : 'border-gray-700'
-                        }`}
+                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.cvv ? 'border-red-500' : 'border-gray-700'
+                          }`}
                       />
                       {validationErrors.cvv && (
                         <p className="text-red-400 text-sm mt-1">{validationErrors.cvv}</p>
@@ -702,12 +864,11 @@ const handleRecharge = async () => {
                   </div>
                 </div>
 
-                {/* Billing Address */}
                 <h4 className="text-md font-semibold mt-6 mb-4 flex items-center">
                   <MapPin className="w-4 h-4 mr-2" />
                   Billing Address
                 </h4>
-                
+
                 <div className="space-y-4">
                   <div>
                     <input
@@ -715,9 +876,8 @@ const handleRecharge = async () => {
                       placeholder="Street Address"
                       value={paymentDetails.address}
                       onChange={(e) => handleInputChange('address', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                        validationErrors.address ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.address ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.address && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.address}</p>
@@ -731,9 +891,8 @@ const handleRecharge = async () => {
                         placeholder="City"
                         value={paymentDetails.city}
                         onChange={(e) => handleInputChange('city', e.target.value)}
-                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                          validationErrors.city ? 'border-red-500' : 'border-gray-700'
-                        }`}
+                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.city ? 'border-red-500' : 'border-gray-700'
+                          }`}
                       />
                       {validationErrors.city && (
                         <p className="text-red-400 text-sm mt-1">{validationErrors.city}</p>
@@ -745,9 +904,8 @@ const handleRecharge = async () => {
                         placeholder="ZIP Code"
                         value={paymentDetails.zipCode}
                         onChange={(e) => handleInputChange('zipCode', e.target.value)}
-                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                          validationErrors.zipCode ? 'border-red-500' : 'border-gray-700'
-                        }`}
+                        className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.zipCode ? 'border-red-500' : 'border-gray-700'
+                          }`}
                       />
                       {validationErrors.zipCode && (
                         <p className="text-red-400 text-sm mt-1">{validationErrors.zipCode}</p>
@@ -781,16 +939,15 @@ const handleRecharge = async () => {
                   <DollarSign className="w-5 h-5 mr-2" />
                   PayPal Information
                 </h3>
-                
+
                 <div>
                   <input
                     type="email"
                     placeholder="PayPal Email Address"
                     value={paymentDetails.paypalEmail}
                     onChange={(e) => handleInputChange('paypalEmail', e.target.value)}
-                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                      validationErrors.paypalEmail ? 'border-red-500' : 'border-gray-700'
-                    }`}
+                    className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.paypalEmail ? 'border-red-500' : 'border-gray-700'
+                      }`}
                   />
                   {validationErrors.paypalEmail && (
                     <p className="text-red-400 text-sm mt-1">{validationErrors.paypalEmail}</p>
@@ -805,8 +962,7 @@ const handleRecharge = async () => {
                   <Gift className="w-5 h-5 mr-2" />
                   Bank Transfer Information
                 </h3>
-                
-                {/* Display App's Bank Details */}
+
                 <div className="mb-6">
                   <h4 className="text-md font-semibold mb-2">Transfer to this account:</h4>
                   <div className="space-y-2 text-sm text-gray-300">
@@ -819,7 +975,6 @@ const handleRecharge = async () => {
                   </div>
                 </div>
 
-                {/* User's Proof */}
                 <div className="space-y-4">
                   <div>
                     <input
@@ -827,9 +982,8 @@ const handleRecharge = async () => {
                       placeholder="Transaction ID/Reference"
                       value={paymentDetails.transactionId}
                       onChange={(e) => handleInputChange('transactionId', e.target.value)}
-                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                        validationErrors.transactionId ? 'border-red-500' : 'border-gray-700'
-                      }`}
+                      className={`w-full p-3 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-pink-500 ${validationErrors.transactionId ? 'border-red-500' : 'border-gray-700'
+                        }`}
                     />
                     {validationErrors.transactionId && (
                       <p className="text-red-400 text-sm mt-1">{validationErrors.transactionId}</p>
@@ -862,7 +1016,6 @@ const handleRecharge = async () => {
               </div>
             )}
 
-            {/* Complete Payment / Submit Request Button */}
             <button
               onClick={handleRecharge}
               disabled={recharging}
@@ -876,12 +1029,11 @@ const handleRecharge = async () => {
               ) : (
                 <div className="flex items-center justify-center space-x-2">
                   <Lock className="w-5 h-5" />
-                  <span>{selectedPaymentMethod === 'bank' ? 'Submit Recharge Request' : `Complete Payment - $${selectedAmount || customAmount}`}</span>
+                  <span>{selectedPaymentMethod === 'bank' ? 'Submit Recharge Request' : `Complete Payment - ${selectedAmount || customAmount}`}</span>
                 </div>
               )}
             </button>
 
-            {/* Security Notice */}
             <div className="bg-gray-800 rounded-lg p-4 text-center">
               <div className="flex items-center justify-center space-x-2 mb-2">
                 <Lock className="w-4 h-4 text-green-400" />
@@ -899,7 +1051,6 @@ const handleRecharge = async () => {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Header */}
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -921,7 +1072,6 @@ const handleRecharge = async () => {
         </div>
       </div>
 
-      {/* Balance Card */}
       <div className="p-4">
         <div className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl p-6 mb-6">
           <div className="text-center">
@@ -933,36 +1083,31 @@ const handleRecharge = async () => {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex bg-gray-900 rounded-lg p-1 mb-6">
           <button
             onClick={() => setActiveTab('recharge')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'recharge'
+            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${activeTab === 'recharge'
                 ? 'bg-pink-600 text-white'
                 : 'text-gray-400 hover:text-white'
-            }`}
+              }`}
           >
             <CreditCard className="w-4 h-4 inline mr-2" />
             Recharge
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'history'
+            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${activeTab === 'history'
                 ? 'bg-pink-600 text-white'
                 : 'text-gray-400 hover:text-white'
-            }`}
+              }`}
           >
             <History className="w-4 h-4 inline mr-2" />
             History
           </button>
         </div>
 
-        {/* Recharge Tab */}
         {activeTab === 'recharge' && (
           <div className="space-y-6">
-            {/* Preset Amounts */}
             <div>
               <h3 className="text-lg font-semibold mb-4">Select Amount</h3>
               <div className="grid grid-cols-1 gap-3">
@@ -973,11 +1118,10 @@ const handleRecharge = async () => {
                       setSelectedAmount(option.amount);
                       setCustomAmount('');
                     }}
-                    className={`relative p-4 rounded-xl border-2 transition-all ${
-                      selectedAmount === option.amount
+                    className={`relative p-4 rounded-xl border-2 transition-all ${selectedAmount === option.amount
                         ? 'border-pink-500 bg-pink-600/20'
                         : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="text-left">
@@ -1010,7 +1154,6 @@ const handleRecharge = async () => {
               </div>
             </div>
 
-            {/* Custom Amount */}
             <div>
               <h3 className="text-lg font-semibold mb-4">Or Enter Custom Amount</h3>
               <div className="relative">
@@ -1038,25 +1181,31 @@ const handleRecharge = async () => {
               )}
             </div>
 
-            {/* Payment Methods */}
             <div>
               <h3 className="text-lg font-semibold mb-4">Payment Method</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3">
                 {paymentMethods.map((method) => {
                   const IconComponent = method.icon;
                   return (
                     <button
                       key={method.id}
                       onClick={() => setSelectedPaymentMethod(method.id)}
-                      className={`p-4 rounded-lg border-2 transition-all ${
-                        selectedPaymentMethod === method.id
+                      className={`w-full p-4 rounded-lg border-2 transition-all ${selectedPaymentMethod === method.id
                           ? 'border-pink-500 bg-pink-600/20'
                           : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-                      }`}
+                        }`}
                     >
-                      <div className="flex flex-col items-center space-y-2">
-                        <IconComponent className="w-6 h-6" />
-                        <span className="text-sm font-medium">{method.name}</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <IconComponent className="w-6 h-6" />
+                          <div className="text-left">
+                            <span className="text-sm font-medium block">{method.name}</span>
+                            <span className="text-xs text-gray-400">{method.description}</span>
+                          </div>
+                        </div>
+                        {selectedPaymentMethod === method.id && (
+                          <CheckCircle className="w-5 h-5 text-pink-500" />
+                        )}
                       </div>
                     </button>
                   );
@@ -1064,21 +1213,28 @@ const handleRecharge = async () => {
               </div>
             </div>
 
-            {/* Proceed to Checkout Button */}
             <button
               onClick={proceedToCheckout}
-              disabled={!selectedAmount && !customAmount}
+              disabled={!selectedAmount && !customAmount || recharging}
               className="w-full py-4 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:from-pink-700 hover:to-purple-700 transition-all"
             >
               <div className="flex items-center justify-center space-x-2">
-                <CreditCard className="w-5 h-5" />
-                <span>
-                  Proceed to Checkout - ${selectedAmount || customAmount || '0'}
-                </span>
+                {recharging ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Creating Order...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-5 h-5" />
+                    <span>
+                      {selectedPaymentMethod === 'usdt' ? 'Pay with USDT' : 'Proceed to Checkout'} - ${selectedAmount || customAmount || '0'}
+                    </span>
+                  </>
+                )}
               </div>
             </button>
 
-            {/* Disclaimer */}
             <div className="bg-gray-900 rounded-lg p-4">
               <h4 className="font-semibold mb-2">Points Usage</h4>
               <ul className="text-sm text-gray-400 space-y-1">
@@ -1091,10 +1247,9 @@ const handleRecharge = async () => {
           </div>
         )}
 
-        {/* History Tab */}
         {activeTab === 'history' && (
           <div>
-            {history.length === 0 ? (
+            {(!history || history.length === 0) ? (
               <div className="text-center py-12">
                 <History className="w-16 h-16 mx-auto mb-4 text-gray-600" />
                 <p className="text-gray-400 text-lg mb-2">No transaction history</p>
@@ -1102,18 +1257,18 @@ const handleRecharge = async () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {history.map((transaction) => (
+                {history.map((transaction, index) => (
                   <div
-                    key={transaction._id || `${transaction.type}-${transaction.createdAt}`}
+                    key={transaction._id || transaction.transactionId || index}
                     className="bg-gray-900 rounded-lg p-4"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        {getTransactionIcon(transaction.type)}
+                        {getTransactionIcon(getCategoryForIcon(transaction))}
                         <div>
-                          <p className="font-medium">{transaction.description}</p>
+                          <p className="font-medium">{transaction.description || transaction.categoryDisplay || 'Transaction'}</p>
                           <p className="text-sm text-gray-400">
-                            {formatDate(transaction.createdAt)}
+                            {formatDate(transaction.createdAt || transaction.requestedAt)}
                           </p>
                           {transaction.transactionId && (
                             <p className="text-xs text-gray-500 mt-1">
@@ -1123,8 +1278,8 @@ const handleRecharge = async () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className={`font-bold text-lg ${getTransactionColor(transaction.type)}`}>
-                          {transaction.amount > 0 ? '+' : ''}{transaction.amount}
+                        <p className={`font-bold text-lg ${getTransactionColor(getCategoryForColor(transaction))}`}>
+                          {transaction.amount > 0 ? '+' : ''}{transaction.amount || transaction.pointsToAdd}
                         </p>
                         <p className="text-xs text-gray-400">points</p>
                       </div>

@@ -21,7 +21,7 @@ import LiveBrowse from "./pages/LiveBrowse.jsx";
 import LiveViewer from './components/LiveViewer';
 import EditProfileScreen from "./components/EditProfileScreen.jsx";
 import AddFriendsScreen from "./components/AddFriendScreen.jsx";
-
+import PointsTransfer from './components/PointsTransfer';
 // Import Login and Signup pages
 import Login from "./pages/Login.jsx"
 import Signup from "./pages/SignUp.jsx"
@@ -128,7 +128,9 @@ const App = () => {
 
           <Route path="/recharge-points" element={<ProtectedRoute><PointsRechargeScreen /></ProtectedRoute>} />
 
-          <Route path="/withdraw-points" element={<ProtectedRoute>< PointsWithdrawalScreen /></ProtectedRoute>} />
+          <Route path="/withdraw-points" element={<ProtectedRoute>< PointsWithdrawalScreen /></ProtectedRoute>} /> 
+
+          <Route path="/transfer-points" element={<ProtectedRoute>< PointsTransfer/></ProtectedRoute>} />
 
 
 
