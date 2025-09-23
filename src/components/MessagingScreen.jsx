@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Send, ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Search, Trash2, Image, FileText, X, Play, Download } from 'lucide-react';
 import io from 'socket.io-client';
 
@@ -13,6 +13,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [signedUrls, setSignedUrls] = useState({}); // Store signed URLs by message ID
 
   // Delete message modal state
   const [deleteModal, setDeleteModal] = useState({
@@ -35,13 +36,37 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
+  // Memoized API config
+  const API_CONFIG = useMemo(() => ({
+    baseUrl: API_BASE_URL,
+    getHeaders: () => {
+      const token = localStorage.getItem('token');
+      return {
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+        'Content-Type': 'application/json'
+      };
+    }
+  }), []);
+
   const getAuthHeaders = () => {
-    const token = localStorage.getItem("token");
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    };
+    return API_CONFIG.getHeaders();
   };
+
+  // Fetch signed URL for a media file
+  const fetchSignedUrl = useCallback(async (messageId, key) => {
+    try {
+      const response = await fetch(`${API_CONFIG.baseUrl}/messages/file/${key}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setSignedUrls(prev => ({ ...prev, [messageId]: data.url }));
+    } catch (error) {
+      console.error('Error fetching signed URL:', { messageId, key, error: error.message });
+    }
+  }, [API_CONFIG]);
 
   // Initialize socket connection
   useEffect(() => {
@@ -62,14 +87,16 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     socketRef.current.on('new-message', (data) => {
       const { message, conversation } = data;
+      console.log('New message received:', data);
 
-      // Update messages if it's for current conversation
       if (selectedConversation && message.conversation === selectedConversation._id) {
         setMessages(prev => [...prev, message]);
+        if (message.key) {
+          fetchSignedUrl(message._id, message.key); // Fetch signed URL for new media
+        }
         scrollToBottom();
       }
 
-      // Update conversation list
       setConversations(prev => prev.map(conv =>
         conv._id === conversation._id
           ? { ...conv, lastMessage: message, updatedAt: new Date() }
@@ -109,7 +136,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         socketRef.current.disconnect();
       }
     };
-  }, [selectedConversation]);
+  }, [selectedConversation, fetchSignedUrl]);
 
   // Load current user
   useEffect(() => {
@@ -139,6 +166,15 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Fetch signed URLs for media messages
+  useEffect(() => {
+    messages.forEach((message) => {
+      if (message.key && !signedUrls[message._id] && ['image', 'video', 'audio'].includes(message.type)) {
+        fetchSignedUrl(message._id, message.key);
+      }
+    });
+  }, [messages, signedUrls, fetchSignedUrl]);
+
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -148,7 +184,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const fetchConversations = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/messages/conversations`, {
+      const response = await fetch(`${API_CONFIG.baseUrl}/messages/conversations`, {
         headers: getAuthHeaders()
       });
 
@@ -167,14 +203,12 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     setSelectedConversation(conversation);
     setMessages([]);
 
-    // Join conversation room
     if (socketRef.current) {
       socketRef.current.emit('join-conversation', { conversationId: conversation._id });
     }
 
-    // Fetch messages
     try {
-      const response = await fetch(`${API_BASE_URL}/messages/conversations/${conversation._id}/messages`, {
+      const response = await fetch(`${API_CONFIG.baseUrl}/messages/conversations/${conversation._id}/messages`, {
         headers: getAuthHeaders()
       });
 
@@ -203,7 +237,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     if (!messageData) setNewMessage('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/messages/conversations/${selectedConversation._id}/messages`, {
+      const response = await fetch(`${API_CONFIG.baseUrl}/messages/conversations/${selectedConversation._id}/messages`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -212,13 +246,16 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
           fileUrl,
           fileSize,
           fileName,
-          key // Include the Wasabi key
+          key
         })
       });
 
       if (response.ok) {
         const message = await response.json();
         setMessages(prev => [...prev, message]);
+        if (message.key) {
+          fetchSignedUrl(message._id, message.key); // Fetch signed URL for new media
+        }
       } else {
         if (!messageData) setNewMessage(content);
         const error = await response.json();
@@ -293,11 +330,9 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       for (let i = 0; i < totalFiles; i++) {
         const file = mediaModal.files[i];
 
-        // Update progress
         setUploadProgress(Math.round((i / totalFiles) * 100));
 
-        // 1️⃣ Get signed upload URL from backend
-        const signedUrlResponse = await fetch(`${API_BASE_URL}/messages/media/signed-url`, {
+        const signedUrlResponse = await fetch(`${API_CONFIG.baseUrl}/messages/media/signed-url`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -310,12 +345,13 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         });
 
         if (!signedUrlResponse.ok) {
-          throw new Error('Failed to get signed URL');
+          const errorText = await signedUrlResponse.text();
+          throw new Error(`Failed to get signed URL: ${errorText}`);
         }
 
         const { uploadUrl, fileUrl, key } = await signedUrlResponse.json();
+        console.log('Uploading file:', { uploadUrl, fileUrl, key, fileName: file.name, fileType: file.type });
 
-        // 2️⃣ Upload file to Wasabi
         const uploadResponse = await fetch(uploadUrl, {
           method: 'PUT',
           headers: { 'Content-Type': file.type },
@@ -323,23 +359,22 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         });
 
         if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload ${file.name}`);
+          const errorText = await uploadResponse.text();
+          throw new Error(`Failed to upload ${file.name}: ${errorText}`);
         }
 
-        // 3️⃣ Detect type (image/video/audio/file)
         let messageType = 'file';
         if (file.type.startsWith('image/')) messageType = 'image';
         else if (file.type.startsWith('video/')) messageType = 'video';
         else if (file.type.startsWith('audio/')) messageType = 'audio';
 
-        // 4️⃣ Send chat message with file info
         await sendMessage(null, {
           type: messageType,
-          fileUrl,       // ✅ from backend
+          fileUrl,
           fileSize: file.size,
           fileName: file.name,
-          content: file.name,
-          key            // ✅ store Wasabi key for reference
+          fileType: file.type, // Store fileType for rendering
+          key
         });
 
         setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
@@ -356,7 +391,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   };
 
-
   // Delete message functions
   const showDeleteModal = (message) => {
     const canDeleteForEveryone = message.sender._id === (currentUser?.id || currentUser?._id);
@@ -372,8 +406,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     try {
       const endpoint = type === 'everyone'
-        ? `${API_BASE_URL}/messages/${deleteModal.message._id}/everyone`
-        : `${API_BASE_URL}/messages/${deleteModal.message._id}/me`;
+        ? `${API_CONFIG.baseUrl}/messages/${deleteModal.message._id}/everyone`
+        : `${API_CONFIG.baseUrl}/messages/${deleteModal.message._id}/me`;
 
       const response = await fetch(endpoint, {
         method: 'DELETE',
@@ -405,6 +439,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const getFileIcon = (type) => {
     if (type === 'image') return <Image className="w-4 h-4" />;
     if (type === 'video') return <Video className="w-4 h-4" />;
+    if (type === 'audio') return <Play className="w-4 h-4" />;
     return <FileText className="w-4 h-4" />;
   };
 
@@ -439,6 +474,132 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     if (!searchQuery.trim()) return true;
     const otherParticipant = getOtherParticipant(conv);
     return otherParticipant?.username?.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  // Memoized Message Component
+  const Message = React.memo(({ message, index, isOwn, showAvatar }) => {
+    return (
+      <div
+        key={message._id}
+        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${showAvatar ? 'mt-4' : 'mt-1'} group`}
+      >
+        {!isOwn && showAvatar && (
+          <img
+            src={message.sender.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(message.sender.username)}&background=random&color=fff&size=200&bold=true`}
+            alt={message.sender.username}
+            className="w-6 h-6 rounded-full object-cover mr-2 mt-auto"
+            loading="lazy"
+          />
+        )}
+        {!isOwn && !showAvatar && <div className="w-8" />}
+
+        <div className="relative">
+          <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${isOwn
+            ? 'bg-pink-600 text-white'
+            : 'bg-gray-800 text-white'
+            }`}>
+            {message.isDeleted ? (
+              <p className="text-sm italic text-gray-400">{message.content}</p>
+            ) : (
+              <>
+                {message.type === 'text' && (
+                  <p className="text-sm">{message.content}</p>
+                )}
+
+                {message.type === 'image' && signedUrls[message._id] && (
+                  <div>
+                    <img
+                      src={signedUrls[message._id]}
+                      alt={message.fileName}
+                      className="max-w-full h-auto rounded-lg mb-2"
+                      loading="lazy"
+                      onError={(e) => {
+                        console.error('Image load error:', {
+                          src: e.target.src,
+                          error: e.target.error,
+                          message,
+                        });
+                      }}
+                    />
+                  </div>
+                )}
+
+                {message.type === 'video' && signedUrls[message._id] && (
+                  <div>
+                    <video
+                      controls
+                      muted={true} // Mute by default like HomeScreen
+                      playsInline
+                      className="max-w-full h-auto rounded-lg mb-2"
+                      preload="auto"
+                      onError={(e) => {
+                        console.error('Video load error:', {
+                          src: e.target.currentSrc,
+                          error: e.target.error,
+                          message,
+                        });
+                      }}
+                    >
+                      <source src={signedUrls[message._id]} type={message.fileType || 'video/mp4'} />
+                    </video>
+                  </div>
+                )}
+
+                {message.type === 'audio' && signedUrls[message._id] && (
+                  <div>
+                    <audio
+                      controls
+                      className="max-w-full"
+                      onError={(e) => {
+                        console.error('Audio load error:', {
+                          src: e.target.currentSrc,
+                          error: e.target.error,
+                          message,
+                        });
+                      }}
+                    >
+                      <source src={signedUrls[message._id]} type={message.fileType || 'audio/mpeg'} />
+                    </audio>
+                  </div>
+                )}
+
+                {message.type === 'file' && (
+                  <div className="flex items-center space-x-2 p-2 bg-black bg-opacity-20 rounded-lg">
+                    {getFileIcon(message.type)}
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{message.fileName}</p>
+                      {message.fileSize && (
+                        <p className="text-xs opacity-75">{formatFileSize(message.fileSize)}</p>
+                      )}
+                    </div>
+                    <a
+                      href={signedUrls[message._id] || `${API_CONFIG.baseUrl}/messages/file/${message.key}`}
+                      download={message.fileName}
+                      className="p-1 hover:bg-white hover:bg-opacity-20 rounded"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  </div>
+                )}
+
+                <p className={`text-xs mt-1 ${isOwn ? 'text-pink-200' : 'text-gray-400'}`}>
+                  {formatMessageTime(message.createdAt)}
+                </p>
+              </>
+            )}
+          </div>
+
+          {!message.isDeleted && (
+            <button
+              onClick={() => showDeleteModal(message)}
+              className="absolute -top-2 -right-2 p-1 bg-red-600 hover:bg-red-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
   });
 
   if (loading) {
@@ -501,14 +662,14 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   <button
                     key={conversation._id}
                     onClick={() => selectConversation(conversation)}
-                    className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${selectedConversation?._id === conversation._id ? 'bg-gray-800' : ''
-                      }`}
+                    className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${selectedConversation?._id === conversation._id ? 'bg-gray-800' : ''}`}
                   >
                     <div className="flex items-center space-x-3">
                       <img
                         src={otherParticipant.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(otherParticipant.username)}&background=random&color=fff&size=200&bold=true`}
                         alt={otherParticipant.username}
                         className="w-12 h-12 rounded-full object-cover"
+                        loading="lazy"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
@@ -570,6 +731,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                         src={otherParticipant.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(otherParticipant.username)}&background=random&color=fff&size=200&bold=true`}
                         alt={otherParticipant.username}
                         className="w-10 h-10 rounded-full object-cover"
+                        loading="lazy"
                       />
                       <div>
                         <h2 className="font-semibold">{otherParticipant.username}</h2>
@@ -604,97 +766,17 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   const showAvatar = !isOwn && (index === 0 || messages[index - 1]?.sender._id !== message.sender._id);
 
                   return (
-                    <div
+                    <Message
                       key={message._id}
-                      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${showAvatar ? 'mt-4' : 'mt-1'} group`}
-                    >
-                      {!isOwn && showAvatar && (
-                        <img
-                          src={message.sender.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(message.sender.username)}&background=random&color=fff&size=200&bold=true`}
-                          alt={message.sender.username}
-                          className="w-6 h-6 rounded-full object-cover mr-2 mt-auto"
-                        />
-                      )}
-                      {!isOwn && !showAvatar && <div className="w-8" />}
-
-                      <div className="relative">
-                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${isOwn
-                          ? 'bg-pink-600 text-white'
-                          : 'bg-gray-800 text-white'
-                          }`}>
-                          {message.isDeleted ? (
-                            <p className="text-sm italic text-gray-400">{message.content}</p>
-                          ) : (
-                            <>
-                              {message.type === 'text' && (
-                                <p className="text-sm">{message.content}</p>
-                              )}
-
-                              {message.type === 'image' && (
-                                <div>
-                                  <img
-                                    src={`${API_BASE_URL}/messages/file/${message.key}`}
-                                    alt={message.fileName}
-                                    className="max-w-full h-auto rounded-lg mb-2"
-                                    onError={(e) => {
-                                      console.error('Image load error:', e);
-                                    }}
-                                  />
-                                </div>
-                              )}
-
-
-                              {message.type === 'video' && (
-                                <div>
-                                  <video controls className="max-w-full h-auto rounded-lg mb-2">
-                                    <source src={`${API_BASE_URL}/messages/file/${message.key}`} type="video/mp4" />
-                                  </video>
-                                </div>
-                              )}
-
-                              {['file', 'audio'].includes(message.type) && (
-                                <div className="flex items-center space-x-2 p-2 bg-black bg-opacity-20 rounded-lg">
-                                  {getFileIcon(message.type)}
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium">{message.fileName}</p>
-                                    {message.fileSize && (
-                                      <p className="text-xs opacity-75">{formatFileSize(message.fileSize)}</p>
-                                    )}
-                                  </div>
-                                  <a
-                                    href={`${API_BASE_URL}/messages/file/${message.key}`}
-                                    download={message.fileName}
-                                    className="p-1 hover:bg-white hover:bg-opacity-20 rounded"
-                                  >
-                                    <Download className="w-4 h-4" />
-                                  </a>
-                                </div>
-                              )}
-                            </>
-                          )}
-
-                          <p className={`text-xs mt-1 ${isOwn ? 'text-pink-200' : 'text-gray-400'
-                            }`}>
-                            {formatMessageTime(message.createdAt)}
-                          </p>
-                        </div>
-
-                        {/* Delete button - only show for non-deleted messages */}
-                        {!message.isDeleted && (
-                          <button
-                            onClick={() => showDeleteModal(message)}
-                            className="absolute -top-2 -right-2 p-1 bg-red-600 hover:bg-red-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                      message={message}
+                      index={index}
+                      isOwn={isOwn}
+                      showAvatar={showAvatar}
+                    />
                   );
                 })
               )}
 
-              {/* Typing indicator */}
               {typingUsers.length > 0 && (
                 <div className="flex items-center space-x-2 text-gray-400 text-sm">
                   <div className="flex space-x-1">
@@ -901,7 +983,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
               </button>
             </div>
 
-            {/* Upload Progress Bar */}
             {uploading && (
               <div className="mt-4">
                 <div className="bg-gray-700 rounded-full h-2">
