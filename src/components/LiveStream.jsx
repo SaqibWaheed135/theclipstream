@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Play, Pause, Volume2, VolumeX, Send, X, Camera, CameraOff, Mic, MicOff } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Camera, CameraOff, Mic, MicOff, Send } from 'lucide-react';
 import io from 'socket.io-client';
 
 const LiveScreen = () => {
@@ -14,13 +14,10 @@ const LiveScreen = () => {
   const [streamId, setStreamId] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [hearts, setHearts] = useState([]);
-  
-  // Refs
+
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const socketRef = useRef(null);
   const streamRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
+  const socketRef = useRef(null);
   const peerConnections = useRef(new Map());
 
   // Initialize socket connection
@@ -51,7 +48,7 @@ const LiveScreen = () => {
       setComments(prev => [...prev, comment]);
     });
 
-    socketRef.current.on('heart-sent', (heartData) => {
+    socketRef.current.on('heart-sent', () => {
       addHeart();
     });
 
@@ -67,13 +64,22 @@ const LiveScreen = () => {
     };
   }, []);
 
-  // Get user media (camera and microphone)
+  // Initialize camera preview
+  useEffect(() => {
+    if (!isLive) {
+      getUserMedia().catch((error) => {
+        console.error('Error initializing camera preview:', error);
+      });
+    }
+  }, [isLive]);
+
+  // Get user media
   const getUserMedia = async () => {
     try {
       const constraints = {
         video: {
-          width: { ideal: 720 },
-          height: { ideal: 1280 },
+          width: { min: 320, ideal: 720, max: 1280 },
+          height: { min: 240, ideal: 1280, max: 720 },
           facingMode: 'user'
         },
         audio: true
@@ -81,33 +87,54 @@ const LiveScreen = () => {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch((err) => {
+            console.error('Error playing video:', err);
+          });
+        };
       }
-      
+
       return stream;
     } catch (error) {
-      console.error('Error accessing media devices:', error);
-      alert('Could not access camera/microphone. Please check permissions.');
+      console.error('Error accessing media devices:', error.name, error.message);
+      let errorMessage = 'Could not access camera/microphone. Please check permissions.';
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Camera/microphone access denied. Please allow access in your browser settings.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No camera or microphone found. Please ensure devices are connected.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage = 'Camera or microphone is already in use by another application.';
+      }
+      alert(errorMessage);
       throw error;
     }
   };
 
   // Start live stream
   const startLive = async () => {
+    console.log('Starting live stream...');
     if (!liveTitle.trim()) {
+      console.warn('No title provided');
       alert('Please enter a title for your live stream');
       return;
     }
 
+    if (!videoRef.current) {
+      console.error('Video element not found');
+      alert('Video element not found. Please try again.');
+      return;
+    }
+
     try {
+      console.log('Requesting user media...');
       setConnectionStatus('connecting');
-      
-      // Get user media
       const stream = await getUserMedia();
-      
-      // Create live stream on backend
+      console.log('User media obtained:', stream);
+
+      console.log('Creating live stream on backend...');
       const token = localStorage.getItem('token');
       const response = await fetch('https://theclipstream-backend.onrender.com/api/live/create', {
         method: 'POST',
@@ -128,9 +155,10 @@ const LiveScreen = () => {
       }
 
       const streamData = await response.json();
+      console.log('Stream created:', streamData);
       setStreamId(streamData.streamId);
 
-      // Join stream room
+      console.log('Joining stream room...');
       socketRef.current.emit('join-stream', {
         streamId: streamData.streamId,
         isStreamer: true,
@@ -140,11 +168,12 @@ const LiveScreen = () => {
       setIsLive(true);
       setIsStreaming(true);
       setConnectionStatus('live');
-      
+      console.log('Live stream started successfully');
     } catch (error) {
       console.error('Error starting live stream:', error);
       setConnectionStatus('error');
-      alert('Failed to start live stream. Please try again.');
+      alert('Failed to start live stream: ' + error.message);
+      stopStream();
     }
   };
 
@@ -152,9 +181,7 @@ const LiveScreen = () => {
   const stopStream = async () => {
     try {
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => {
-          track.stop();
-        });
+        streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
 
@@ -188,7 +215,6 @@ const LiveScreen = () => {
     setConnectionStatus('disconnected');
   };
 
-  // Send comment
   const sendComment = (e) => {
     e.preventDefault();
     if (!newComment.trim() || !streamId) return;
@@ -203,7 +229,6 @@ const LiveScreen = () => {
     setNewComment('');
   };
 
-  // Send heart
   const sendHeart = () => {
     if (streamId) {
       socketRef.current.emit('send-heart', { streamId });
@@ -211,17 +236,14 @@ const LiveScreen = () => {
     }
   };
 
-  // Add heart animation
   const addHeart = () => {
     const heartId = Date.now() + Math.random();
     setHearts(prev => [...prev, { id: heartId, x: Math.random() * 100 }]);
-    
     setTimeout(() => {
       setHearts(prev => prev.filter(h => h.id !== heartId));
     }, 3000);
   };
 
-  // Toggle mute
   const toggleMute = () => {
     if (streamRef.current) {
       const audioTrack = streamRef.current.getAudioTracks()[0];
@@ -232,7 +254,6 @@ const LiveScreen = () => {
     }
   };
 
-  // Toggle video
   const toggleVideo = () => {
     if (streamRef.current) {
       const videoTrack = streamRef.current.getVideoTracks()[0];
@@ -243,7 +264,6 @@ const LiveScreen = () => {
     }
   };
 
-  // Share stream
   const shareStream = async () => {
     const shareData = {
       title: `🔴 LIVE: ${liveTitle}`,
@@ -267,7 +287,6 @@ const LiveScreen = () => {
     <div className="min-h-screen bg-black text-white">
       {!isLive ? (
         <>
-          {/* Header */}
           <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
             <h1 className="text-xl font-bold text-center">Go LIVE</h1>
             <div className="text-center mt-1">
@@ -286,7 +305,6 @@ const LiveScreen = () => {
           </div>
 
           <div className="p-4">
-            {/* Camera Preview */}
             <div className="relative bg-gray-900 rounded-xl aspect-[9/16] mb-6 overflow-hidden">
               <video
                 ref={videoRef}
@@ -295,8 +313,6 @@ const LiveScreen = () => {
                 playsInline
                 className="w-full h-full object-cover"
               />
-              
-              {/* Camera controls overlay */}
               <div className="absolute top-4 right-4 flex space-x-2">
                 <button
                   onClick={toggleVideo}
@@ -311,8 +327,6 @@ const LiveScreen = () => {
                   {isMuted ? <MicOff className="w-5 h-5 text-white" /> : <Mic className="w-5 h-5 text-white" />}
                 </button>
               </div>
-
-              {/* Preview overlay when no camera */}
               {!videoRef.current?.srcObject && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
                   <div className="text-center">
@@ -325,7 +339,6 @@ const LiveScreen = () => {
               )}
             </div>
 
-            {/* Live Title Input */}
             <div className="mb-6">
               <label className="block text-sm font-semibold mb-2">Live title</label>
               <input
@@ -339,7 +352,6 @@ const LiveScreen = () => {
               <p className="text-gray-400 text-sm mt-1">{liveTitle.length}/100</p>
             </div>
 
-            {/* Go Live Button */}
             <button
               onClick={startLive}
               disabled={!liveTitle.trim() || connectionStatus !== 'connected'}
@@ -348,7 +360,6 @@ const LiveScreen = () => {
               {connectionStatus === 'connecting' ? 'Starting...' : 'Go LIVE'}
             </button>
 
-            {/* Live Tips */}
             <div className="mt-8 bg-gray-900 rounded-xl p-4">
               <h3 className="font-bold mb-3 text-center">Tips for going live</h3>
               <div className="space-y-3 text-sm text-gray-300">
@@ -369,140 +380,118 @@ const LiveScreen = () => {
           </div>
         </>
       ) : (
-        <>
-          {/* Live Stream Interface */}
-          <div className="relative h-screen bg-gray-900 overflow-hidden">
-            {/* Live video feed */}
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-
-            {/* Hearts animation */}
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              {hearts.map(heart => (
-                <div
-                  key={heart.id}
-                  className="absolute bottom-32 animate-pulse"
-                  style={{
-                    left: `${heart.x}%`,
-                    animation: 'heartFloat 3s ease-out forwards'
-                  }}
-                >
-                  <Heart className="w-8 h-8 text-red-500 fill-red-500" />
-                </div>
-              ))}
-            </div>
-
-            {/* Live indicator */}
-            <div className="absolute top-4 left-4 z-20">
-              <div className="bg-red-500 px-3 py-1 rounded-full flex items-center space-x-2">
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                <span className="text-white font-bold text-sm">LIVE</span>
-                <span className="text-white font-bold text-sm">{viewers}</span>
-              </div>
-            </div>
-
-            {/* Top controls */}
-            <div className="absolute top-4 right-4 z-20 flex space-x-2">
-              <button
-                onClick={shareStream}
-                className="bg-black/50 backdrop-blur-sm px-3 py-2 rounded-full text-white"
+        <div className="relative h-screen bg-gray-900 overflow-hidden">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {hearts.map(heart => (
+              <div
+                key={heart.id}
+                className="absolute bottom-32 animate-pulse"
+                style={{
+                  left: `${heart.x}%`,
+                  animation: 'heartFloat 3s ease-out forwards'
+                }}
               >
-                <Share2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={stopStream}
-                className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-full text-white font-semibold transition-colors"
-              >
-                End
-              </button>
-            </div>
-
-            {/* Live comments overlay */}
-            <div className="absolute bottom-24 left-0 right-0 p-4 pointer-events-none">
-              <div className="bg-black/30 backdrop-blur-sm rounded-xl p-3 max-h-40 overflow-y-auto pointer-events-auto">
-                <div className="space-y-2">
-                  {comments.slice(-5).map((comment, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <div className={`w-6 h-6 rounded-full ${
-                        ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-yellow-500'][index % 5]
-                      }`}></div>
-                      <span className="text-white font-semibold text-sm">{comment.username || 'Anonymous'}</span>
-                      <span className="text-gray-300 text-sm">{comment.text}</span>
-                    </div>
-                  ))}
-                  
-                  {comments.length === 0 && (
-                    <div className="text-center text-gray-400 py-4">
-                      <MessageCircle className="w-6 h-6 mx-auto mb-2" />
-                      <p className="text-sm">No comments yet</p>
-                    </div>
-                  )}
-                </div>
+                <Heart className="w-8 h-8 text-red-500 fill-red-500" />
               </div>
+            ))}
+          </div>
+          <div className="absolute top-4 left-4 z-20">
+            <div className="bg-red-500 px-3 py-1 rounded-full flex items-center space-x-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              <span className="text-white font-bold text-sm">LIVE</span>
+              <span className="text-white font-bold text-sm">{viewers}</span>
             </div>
-
-            {/* Live controls */}
-            <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center">
-              {/* Left side - Media controls */}
-              <div className="flex space-x-2">
-                <button
-                  onClick={toggleMute}
-                  className={`w-12 h-12 ${isMuted ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
-                >
-                  {isMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
-                </button>
-                <button
-                  onClick={toggleVideo}
-                  className={`w-12 h-12 ${isVideoOff ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
-                >
-                  {isVideoOff ? <CameraOff className="w-6 h-6 text-white" /> : <Camera className="w-6 h-6 text-white" />}
-                </button>
-              </div>
-
-              {/* Right side - Interaction */}
-              <button
-                onClick={sendHeart}
-                className="w-12 h-12 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center"
-              >
-                <Heart className="w-6 h-6 text-red-500" />
-              </button>
-            </div>
-
-            {/* Comment input (floating) */}
-            <div className="absolute bottom-20 left-4 right-20">
-              <div className="flex items-center space-x-2">
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        sendComment(e);
-                      }
-                    }}
-                    placeholder="Say something..."
-                    className="w-full px-4 py-2 pr-12 bg-black/50 backdrop-blur-sm border border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-red-500 text-white placeholder-gray-400"
-                  />
-                  <button
-                    onClick={sendComment}
-                    disabled={!newComment.trim()}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded-full bg-red-500 text-white disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-red-600 transition-colors"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
+          </div>
+          <div className="absolute top-4 right-4 z-20 flex space-x-2">
+            <button
+              onClick={shareStream}
+              className="bg-black/50 backdrop-blur-sm px-3 py-2 rounded-full text-white"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={stopStream}
+              className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-full text-white font-semibold transition-colors"
+            >
+              End
+            </button>
+          </div>
+          <div className="absolute bottom-24 left-0 right-0 p-4 pointer-events-none">
+            <div className="bg-black/30 backdrop-blur-sm rounded-xl p-3 max-h-40 overflow-y-auto pointer-events-auto">
+              <div className="space-y-2">
+                {comments.slice(-5).map((comment, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <div className={`w-6 h-6 rounded-full ${
+                      ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-yellow-500'][index % 5]
+                    }`}></div>
+                    <span className="text-white font-semibold text-sm">{comment.username || 'Anonymous'}</span>
+                    <span className="text-gray-300 text-sm">{comment.text}</span>
+                  </div>
+                ))}
+                {comments.length === 0 && (
+                  <div className="text-center text-gray-400 py-4">
+                    <MessageCircle className="w-6 h-6 mx-auto mb-2" />
+                    <p className="text-sm">No comments yet</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Custom CSS for heart animation */}
+          <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center">
+            <div className="flex space-x-2">
+              <button
+                onClick={toggleMute}
+                className={`w-12 h-12 ${isMuted ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
+              >
+                {isMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
+              </button>
+              <button
+                onClick={toggleVideo}
+                className={`w-12 h-12 ${isVideoOff ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
+              >
+                {isVideoOff ? <CameraOff className="w-6 h-6 text-white" /> : <Camera className="w-6 h-6 text-white" />}
+              </button>
+            </div>
+            <button
+              onClick={sendHeart}
+              className="w-12 h-12 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center"
+            >
+              <Heart className="w-6 h-6 text-red-500" />
+            </button>
+          </div>
+          <div className="absolute bottom-20 left-4 right-20">
+            <div className="flex items-center space-x-2">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      sendComment(e);
+                    }
+                  }}
+                  placeholder="Say something..."
+                  className="w-full px-4 py-2 pr-12 bg-black/50 backdrop-blur-sm border border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-red-500 text-white placeholder-gray-400"
+                />
+                <button
+                  onClick={sendComment}
+                  disabled={!newComment.trim()}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded-full bg-red-500 text-white disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-red-600 transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
           <style jsx>{`
             @keyframes heartFloat {
               0% {
@@ -519,7 +508,7 @@ const LiveScreen = () => {
               }
             }
           `}</style>
-        </>
+        </div>
       )}
     </div>
   );

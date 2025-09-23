@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Search, Trash2, Image, FileText, X, Play, Download } from 'lucide-react';
+import { Send, ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Search, Trash2, Image, Play, X } from 'lucide-react';
 import io from 'socket.io-client';
 
 const MessagingScreen = ({ conversationId: propConversationId }) => {
@@ -55,7 +55,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   // Fetch signed URL for a media file
   const fetchSignedUrl = useCallback(async (messageId, key) => {
     try {
-      const response = await fetch(`${API_CONFIG.baseUrl}/messages/file/${key}`, {
+      const response = await fetch(`${API_CONFIG.baseUrl}/messages/file/${encodeURIComponent(key)}`, {
         headers: getAuthHeaders(),
       });
       if (!response.ok) {
@@ -91,8 +91,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
       if (selectedConversation && message.conversation === selectedConversation._id) {
         setMessages(prev => [...prev, message]);
-        if (message.key) {
-          fetchSignedUrl(message._id, message.key); // Fetch signed URL for new media
+        if (message.key && ['image', 'video'].includes(message.type)) {
+          fetchSignedUrl(message._id, message.key);
         }
         scrollToBottom();
       }
@@ -122,7 +122,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       const { messageId } = data;
       setMessages(prev => prev.map(msg =>
         msg._id === messageId
-          ? { ...msg, isDeleted: true, content: 'This message was deleted' }
+          ? { ...msg, isDeleted: true, content: 'This message was deleted', key: null, fileType: null, fileName: null }
           : msg
       ));
     });
@@ -169,7 +169,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   // Fetch signed URLs for media messages
   useEffect(() => {
     messages.forEach((message) => {
-      if (message.key && !signedUrls[message._id] && ['image', 'video', 'audio'].includes(message.type)) {
+      if (message.key && !signedUrls[message._id] && ['image', 'video'].includes(message.type)) {
         fetchSignedUrl(message._id, message.key);
       }
     });
@@ -226,10 +226,9 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     const content = messageData?.content || newMessage.trim();
     const type = messageData?.type || 'text';
-    const fileUrl = messageData?.fileUrl;
-    const fileSize = messageData?.fileSize;
-    const fileName = messageData?.fileName;
     const key = messageData?.key;
+    const fileType = messageData?.fileType;
+    const fileName = messageData?.fileName;
 
     if ((type === 'text' && !content) || !selectedConversation || sending) return;
 
@@ -243,18 +242,17 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         body: JSON.stringify({
           content,
           type,
-          fileUrl,
-          fileSize,
-          fileName,
-          key
+          key,
+          fileType,
+          fileName
         })
       });
 
       if (response.ok) {
         const message = await response.json();
         setMessages(prev => [...prev, message]);
-        if (message.key) {
-          fetchSignedUrl(message._id, message.key); // Fetch signed URL for new media
+        if (message.key && ['image', 'video'].includes(message.type)) {
+          fetchSignedUrl(message._id, message.key);
         }
       } else {
         if (!messageData) setNewMessage(content);
@@ -292,18 +290,26 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   // File handling functions
   const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files).filter(file => 
+      file.type.startsWith('image/') || file.type.startsWith('video/')
+    );
     if (files.length > 0) {
       setMediaModal({ show: true, files });
+    } else {
+      alert('Only images and videos are allowed');
     }
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
     setDragActive(false);
-    const files = Array.from(e.dataTransfer.files);
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type.startsWith('image/') || file.type.startsWith('video/')
+    );
     if (files.length > 0) {
       setMediaModal({ show: true, files });
+    } else {
+      alert('Only images and videos are allowed');
     }
   };
 
@@ -349,8 +355,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
           throw new Error(`Failed to get signed URL: ${errorText}`);
         }
 
-        const { uploadUrl, fileUrl, key } = await signedUrlResponse.json();
-        console.log('Uploading file:', { uploadUrl, fileUrl, key, fileName: file.name, fileType: file.type });
+        const { uploadUrl, key } = await signedUrlResponse.json();
+        console.log('Uploading file:', { uploadUrl, key, fileName: file.name, fileType: file.type });
 
         const uploadResponse = await fetch(uploadUrl, {
           method: 'PUT',
@@ -363,18 +369,13 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
           throw new Error(`Failed to upload ${file.name}: ${errorText}`);
         }
 
-        let messageType = 'file';
-        if (file.type.startsWith('image/')) messageType = 'image';
-        else if (file.type.startsWith('video/')) messageType = 'video';
-        else if (file.type.startsWith('audio/')) messageType = 'audio';
+        const messageType = file.type.startsWith('image/') ? 'image' : 'video';
 
         await sendMessage(null, {
           type: messageType,
-          fileUrl,
-          fileSize: file.size,
-          fileName: file.name,
-          fileType: file.type, // Store fileType for rendering
-          key
+          key,
+          fileType: file.type,
+          fileName: file.name
         });
 
         setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
@@ -418,7 +419,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         if (type === 'everyone') {
           setMessages(prev => prev.map(msg =>
             msg._id === deleteModal.message._id
-              ? { ...msg, isDeleted: true, content: 'This message was deleted' }
+              ? { ...msg, isDeleted: true, content: 'This message was deleted', key: null, fileType: null, fileName: null }
               : msg
           ));
         } else {
@@ -438,9 +439,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   const getFileIcon = (type) => {
     if (type === 'image') return <Image className="w-4 h-4" />;
-    if (type === 'video') return <Video className="w-4 h-4" />;
-    if (type === 'audio') return <Play className="w-4 h-4" />;
-    return <FileText className="w-4 h-4" />;
+    if (type === 'video') return <Play className="w-4 h-4" />;
+    return <Image className="w-4 h-4" />;
   };
 
   const formatFileSize = (bytes) => {
@@ -467,7 +467,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   const getOtherParticipant = (conversation) => {
     if (!conversation.participants || !currentUser) return null;
-    return conversation.participants.find(p => p._id !== currentUser.id && p._id !== currentUser._id);
+    return conversation.participants.find(p => p._id !== (currentUser.id || currentUser._id));
   };
 
   const filteredConversations = conversations.filter(conv => {
@@ -521,6 +521,9 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                         });
                       }}
                     />
+                    {message.fileName && (
+                      <p className="text-xs text-gray-400">{message.fileName}</p>
+                    )}
                   </div>
                 )}
 
@@ -528,7 +531,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   <div>
                     <video
                       controls
-                      muted={true} // Mute by default like HomeScreen
+                      muted={true}
                       playsInline
                       className="max-w-full h-auto rounded-lg mb-2"
                       preload="auto"
@@ -542,46 +545,12 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                     >
                       <source src={signedUrls[message._id]} type={message.fileType || 'video/mp4'} />
                     </video>
+                    {message.fileName && (
+                      <p className="text-xs text-gray-400">{message.fileName}</p>
+                    )}
                   </div>
                 )}
-
-                {message.type === 'audio' && signedUrls[message._id] && (
-                  <div>
-                    <audio
-                      controls
-                      className="max-w-full"
-                      onError={(e) => {
-                        console.error('Audio load error:', {
-                          src: e.target.currentSrc,
-                          error: e.target.error,
-                          message,
-                        });
-                      }}
-                    >
-                      <source src={signedUrls[message._id]} type={message.fileType || 'audio/mpeg'} />
-                    </audio>
-                  </div>
-                )}
-
-                {message.type === 'file' && (
-                  <div className="flex items-center space-x-2 p-2 bg-black bg-opacity-20 rounded-lg">
-                    {getFileIcon(message.type)}
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{message.fileName}</p>
-                      {message.fileSize && (
-                        <p className="text-xs opacity-75">{formatFileSize(message.fileSize)}</p>
-                      )}
-                    </div>
-                    <a
-                      href={signedUrls[message._id] || `${API_CONFIG.baseUrl}/messages/file/${message.key}`}
-                      download={message.fileName}
-                      className="p-1 hover:bg-white hover:bg-opacity-20 rounded"
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
-                  </div>
-                )}
-
+                
                 <p className={`text-xs mt-1 ${isOwn ? 'text-pink-200' : 'text-gray-400'}`}>
                   {formatMessageTime(message.createdAt)}
                 </p>
@@ -620,7 +589,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         <div className="absolute inset-0 bg-pink-600 bg-opacity-20 z-50 flex items-center justify-center">
           <div className="text-center">
             <Paperclip className="w-12 h-12 mx-auto mb-4 text-pink-400" />
-            <p className="text-xl font-semibold">Drop files to send</p>
+            <p className="text-xl font-semibold">Drop images or videos to send</p>
           </div>
         </div>
       )}
@@ -682,7 +651,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                         </div>
                         {conversation.lastMessage && (
                           <p className="text-sm text-gray-400 truncate">
-                            {conversation.lastMessage.sender === currentUser?.id || conversation.lastMessage.sender === currentUser?._id
+                            {conversation.lastMessage.sender === (currentUser?.id || currentUser?._id)
                               ? 'You: ' : ''
                             }
                             {conversation.lastMessage.type !== 'text' ? (
@@ -762,7 +731,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                 </div>
               ) : (
                 messages.map((message, index) => {
-                  const isOwn = message.sender._id === currentUser?.id || message.sender._id === currentUser?._id;
+                  const isOwn = message.sender._id === (currentUser?.id || currentUser?._id);
                   const showAvatar = !isOwn && (index === 0 || messages[index - 1]?.sender._id !== message.sender._id);
 
                   return (
@@ -798,7 +767,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
+                  accept="image/*,video/*"
                   onChange={handleFileSelect}
                   className="hidden"
                 />
@@ -907,7 +876,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-900 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Send Files</h3>
+              <h3 className="text-lg font-semibold">Send Media</h3>
               <button
                 onClick={() => setMediaModal({ show: false, files: [] })}
                 className="p-2 hover:bg-gray-800 rounded-full transition-colors"
@@ -928,13 +897,9 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                           className="w-full h-full object-cover"
                         />
                       </div>
-                    ) : file.type.startsWith('video/') ? (
-                      <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
-                        <Play className="w-6 h-6 text-pink-400" />
-                      </div>
                     ) : (
                       <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
-                        <FileText className="w-6 h-6 text-pink-400" />
+                        <Play className="w-6 h-6 text-pink-400" />
                       </div>
                     )}
                   </div>
