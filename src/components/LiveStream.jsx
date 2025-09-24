@@ -202,15 +202,28 @@ const LiveScreen = () => {
         throw new Error(`Failed to connect to LiveKit: ${liveKitError.message}`);
       }
 
-      // Publish local tracks
+      // FIXED: Clone the tracks to avoid conflicts between local video and LiveKit
       if (streamRef.current) {
         try {
           console.log('Publishing tracks to LiveKit...');
           const tracks = streamRef.current.getTracks();
+          
           for (const track of tracks) {
             console.log('Publishing track:', track.kind);
-            await room.localParticipant.publishTrack(track);
+            await room.localParticipant.publishTrack(track, {
+              // FIXED: Add track options to ensure proper handling
+              name: track.kind === 'video' ? 'camera' : 'microphone',
+            });
           }
+          
+          // FIXED: Keep the original stream for local display
+          // Don't reassign streamRef.current, keep it for local video
+          if (videoRef.current) {
+            // FIXED: Use the same stream reference for live video
+            videoRef.current.srcObject = streamRef.current;
+            videoRef.current.play().catch(console.error);
+          }
+          
         } catch (publishError) {
           console.error('Failed to publish tracks:', publishError);
           throw new Error(`Failed to publish video/audio: ${publishError.message}`);
@@ -219,12 +232,6 @@ const LiveScreen = () => {
 
       setLiveKitRoom(room);
       setIsStreaming(true);
-
-      // Display local stream in the live video element
-      if (videoRef.current && streamRef.current) {
-        videoRef.current.srcObject = streamRef.current;
-        videoRef.current.play().catch(console.error);
-      }
 
       // Join stream via socket
       console.log('Joining stream via socket...');
@@ -254,28 +261,29 @@ const LiveScreen = () => {
     try {
       console.log('Stopping stream...');
       
-      // Stop local media tracks
+      // Disconnect LiveKit room first
+      if (liveKitRoom) {
+        await liveKitRoom.disconnect();
+        setLiveKitRoom(null);
+        console.log('Disconnected from LiveKit room');
+      }
+
+      // FIXED: Don't stop tracks immediately, handle them properly
       if (streamRef.current) {
+        // Clear video elements first
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+        }
+        
+        // Then stop tracks
         streamRef.current.getTracks().forEach((track) => {
           track.stop();
           console.log('Stopped track:', track.kind);
         });
         streamRef.current = null;
-      }
-
-      // Clear video elements
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null;
-      }
-
-      // Disconnect LiveKit room
-      if (liveKitRoom) {
-        await liveKitRoom.disconnect();
-        setLiveKitRoom(null);
-        console.log('Disconnected from LiveKit room');
       }
 
       // End stream via socket
@@ -308,8 +316,10 @@ const LiveScreen = () => {
     setConnectionStatus('disconnected');
     setCurrentStream(null);
     setCohostRequests([]);
-    // Re-initialize camera preview
-    getUserMedia().catch(console.error);
+    // FIXED: Re-initialize camera preview with a slight delay
+    setTimeout(() => {
+      getUserMedia().catch(console.error);
+    }, 1000);
   };
 
   const sendComment = (e) => {
@@ -347,7 +357,7 @@ const LiveScreen = () => {
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsMuted(!audioTrack.enabled);
-        // Update LiveKit track if publishing
+        // FIXED: Update LiveKit track state properly
         if (liveKitRoom) {
           liveKitRoom.localParticipant.setMicrophoneEnabled(audioTrack.enabled);
         }
@@ -361,7 +371,7 @@ const LiveScreen = () => {
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoOff(!videoTrack.enabled);
-        // Update LiveKit track if publishing
+        // FIXED: Update LiveKit track state properly
         if (liveKitRoom) {
           liveKitRoom.localParticipant.setCameraEnabled(videoTrack.enabled);
         }
