@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Heart, MessageCircle, Share2, Camera, CameraOff, Mic, MicOff, Send } from 'lucide-react';
 import io from 'socket.io-client';
-import { Room, RoomEvent, Track } from 'livekit-client'; // LiveKit SDK
+import { Room, RoomEvent, Track } from 'livekit-client';
 
 const LiveScreen = () => {
   const [isLive, setIsLive] = useState(false);
@@ -23,16 +23,15 @@ const LiveScreen = () => {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const socketRef = useRef(null);
-  const localVideoRef = useRef(null); // For local preview/publishing
+  const localVideoRef = useRef(null);
 
-  // LiveKit config (from env or props)
-  const LIVEKIT_URL = process.env.REACT_APP_LIVEKIT_URL || 'wss://your-project.livekit.cloud';
+  // Use environment variable for LiveKit URL, fallback to placeholder if not set
+  const LIVEKIT_URL = process.env.REACT_APP_LIVEKIT_URL || 'wss://theclipstream-q0jt88zr.livekit.cloud';
 
   // Initialize socket connection
   useEffect(() => {
     socketRef.current = io('https://theclipstream-backend.onrender.com', {
       transports: ['websocket'],
-
     });
 
     socketRef.current.on('connect', () => {
@@ -90,13 +89,6 @@ const LiveScreen = () => {
     }
   }, [isLive]);
 
-  // Start LiveKit room when going live
-  useEffect(() => {
-    if (isLive && streamId && !liveKitRoom) {
-      startLiveKitRoom();
-    }
-  }, [isLive, streamId]);
-
   const getUserMedia = async () => {
     try {
       const constraints = {
@@ -124,34 +116,12 @@ const LiveScreen = () => {
     }
   };
 
-  const startLiveKitRoom = async () => {
-    try {
-      const token = localStorage.getItem('publishToken'); // From backend after create
-      const room = new Room();
-      await room.connect(LIVEKIT_URL, token);
-
-      room.on(RoomEvent.TrackPublished, (track, publication) => {
-        if (track.kind === Track.Kind.Video || track.kind === Track.Kind.Audio) {
-          room.localParticipant.setTrackEnabled(track, true);
-        }
-      });
-
-      setLiveKitRoom(room);
-      setIsStreaming(true);
-      console.log('LiveKit room connected and publishing');
-    } catch (error) {
-      console.error('LiveKit connection error:', error);
-      alert('Failed to start WebRTC publishing. Use RTMP fallback in OBS.');
-    }
-  };
-
-  // Fetch current stream data
   const fetchStream = async () => {
     if (!streamId) return;
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`https://theclipstream-backend.onrender.com/api/live/${streamId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
       if (response.ok) {
@@ -163,8 +133,7 @@ const LiveScreen = () => {
     }
   };
 
-  // Start live stream
-const startLive = async () => {
+  const startLive = async () => {
     if (!liveTitle.trim()) {
       alert('Please enter a title for your live stream');
       return;
@@ -172,8 +141,10 @@ const startLive = async () => {
 
     try {
       setConnectionStatus('connecting');
+      
+      // Ensure we have media stream
       if (!streamRef.current) {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        streamRef.current = await getUserMedia();
       }
 
       const token = localStorage.getItem('token');
@@ -181,7 +152,7 @@ const startLive = async () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -199,27 +170,43 @@ const startLive = async () => {
       const streamData = await response.json();
       console.log('Stream data from backend:', streamData);
 
+      // Validate publishToken
       if (!streamData.publishToken || typeof streamData.publishToken !== 'string') {
-        throw new Error(`Invalid publishToken: ${JSON.stringify(streamData.publishToken)}`);
+        console.error('Invalid publishToken received:', streamData.publishToken);
+        throw new Error('Invalid publish token received from server');
+      }
+
+      // Validate roomUrl
+      if (!streamData.roomUrl || !streamData.roomUrl.startsWith('wss://')) {
+        console.error('Invalid roomUrl received:', streamData.roomUrl);
+        throw new Error('Invalid room URL received from server');
       }
 
       setStreamId(streamData.streamId);
       setCurrentStream(streamData.stream);
-      localStorage.setItem('publishToken', streamData.publishToken);
 
       // Connect to LiveKit room
       const room = new Room();
-      console.log('Connecting to room with URL:', streamData.roomUrl, 'Token:', streamData.publishToken);
+      console.log('Connecting to LiveKit room:', {
+        url: streamData.roomUrl,
+        tokenLength: streamData.publishToken.length
+      });
+      
       await room.connect(streamData.roomUrl, streamData.publishToken);
+      console.log('Connected to LiveKit room successfully');
 
       // Publish local tracks
-      for (const track of streamRef.current.getTracks()) {
-        await room.localParticipant.publishTrack(track);
+      if (streamRef.current) {
+        for (const track of streamRef.current.getTracks()) {
+          console.log('Publishing track:', track.kind);
+          await room.localParticipant.publishTrack(track);
+        }
       }
 
-      liveKitRoom.current = room;
+      setLiveKitRoom(room);
       setIsStreaming(true);
 
+      // Join stream via socket
       socketRef.current.emit('join-stream', {
         streamId: streamData.streamId,
         isStreamer: true,
@@ -235,27 +222,32 @@ const startLive = async () => {
       stopStream();
     }
   };
+
   const stopStream = async () => {
     try {
+      // Stop local media tracks
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
 
+      // Disconnect LiveKit room
       if (liveKitRoom) {
         await liveKitRoom.disconnect();
         setLiveKitRoom(null);
       }
 
+      // End stream via socket
       if (socketRef.current && streamId) {
         socketRef.current.emit('end-stream', { streamId });
       }
 
+      // End stream via API
       if (streamId) {
         const token = localStorage.getItem('token');
         await fetch(`https://theclipstream-backend.onrender.com/api/live/${streamId}/end`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
         });
       }
@@ -275,7 +267,8 @@ const startLive = async () => {
     setConnectionStatus('disconnected');
     setCurrentStream(null);
     setCohostRequests([]);
-    localStorage.removeItem('publishToken');
+    // Re-initialize camera preview
+    getUserMedia().catch(console.error);
   };
 
   const sendComment = (e) => {
@@ -407,7 +400,7 @@ const startLive = async () => {
                 {isMuted ? <MicOff className="w-5 h-5 text-white" /> : <Mic className="w-5 h-5 text-white" />}
               </button>
             </div>
-            {!localVideoRef.current?.srcObject && (
+            {!streamRef.current && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
                 <div className="text-center">
                   <div className="w-16 h-16 bg-red-500 rounded-full mx-auto mb-4 flex items-center justify-center">

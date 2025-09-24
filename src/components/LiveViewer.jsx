@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Share2, Users, Send, ArrowLeft, Camera } from 'lucide-react';
 import io from 'socket.io-client';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Room, RoomEvent, Track } from 'livekit-client'; // LiveKit SDK
+import { Room, RoomEvent, Track } from 'livekit-client';
 
 const LiveViewer = () => {
   const { streamId } = useParams();
@@ -20,11 +20,11 @@ const LiveViewer = () => {
   const [liveKitRoom, setLiveKitRoom] = useState(null);
 
   const socketRef = useRef(null);
-  const videoRefs = useRef({}); // Refs for each participant's video
+  const videoRefs = useRef({});
   const commentsEndRef = useRef(null);
 
-  // LiveKit config
-  const LIVEKIT_URL = process.env.REACT_APP_LIVEKIT_URL || 'wss://your-project.livekit.cloud';
+  // Use environment variable for LiveKit URL
+  const LIVEKIT_URL = process.env.REACT_APP_LIVEKIT_URL || 'wss://theclipstream-q0jt88zr.livekit.cloud';
 
   // Initialize socket and join stream
   useEffect(() => {
@@ -32,7 +32,7 @@ const LiveViewer = () => {
       try {
         setIsLoading(true);
 
-        // Fetch stream info (includes viewer token from backend)
+        // Fetch stream info first
         const response = await fetch(`https://theclipstream-backend.onrender.com/api/live/${streamId}`, {
           credentials: 'include',
         });
@@ -42,6 +42,7 @@ const LiveViewer = () => {
         }
 
         const streamData = await response.json();
+        console.log('Fetched stream data:', streamData);
         setStream(streamData);
 
         // Initialize socket
@@ -52,21 +53,31 @@ const LiveViewer = () => {
         });
 
         socketRef.current.on('connect', () => {
+          console.log('Socket connected');
           setIsConnected(true);
           socketRef.current.emit('join-stream', { streamId, isStreamer: false });
         });
 
         socketRef.current.on('disconnect', () => {
+          console.log('Socket disconnected');
           setIsConnected(false);
         });
 
         socketRef.current.on('joined-stream', async (data) => {
+          console.log('Joined stream data:', data);
           setViewers(data.viewerCount);
           setStream(data.stream);
           setIsLoading(false);
 
-          // Connect to LiveKit room as viewer
-          await connectToLiveKitRoom(data.stream.viewerToken);
+          // Connect to LiveKit room as viewer if we have a viewer token
+          if (streamData.viewerToken || data.stream?.viewerToken) {
+            const viewerToken = streamData.viewerToken || data.stream?.viewerToken;
+            const roomUrl = streamData.roomUrl || data.stream?.roomUrl || LIVEKIT_URL;
+            await connectToLiveKitRoom(roomUrl, viewerToken);
+          } else {
+            console.warn('No viewer token available - fetching from API');
+            await fetchViewerToken();
+          }
         });
 
         socketRef.current.on('viewer-joined', (data) => {
@@ -94,22 +105,14 @@ const LiveViewer = () => {
           setStream(data.stream);
           // Re-subscribe if new publisher joins
           if (liveKitRoom) {
-            liveKitRoom.remoteParticipants.forEach((participant) => {
-              participant.tracks.forEach((publication) => {
-                if (publication.isSubscribed && publication.track.kind === Track.Kind.Video) {
-                  const track = publication.track;
-                  const videoEl = videoRefs.current[participant.identity];
-                  if (videoEl) track.attach(videoEl);
-                }
-              });
-            });
+            subscribeToNewTracks();
           }
         });
 
         socketRef.current.on('cohost-approved', (data) => {
           alert(`Approved! Use these details to stream:
-RTMP URL: ${data.rtmpUrl}
-Stream Key: ${data.streamKey}
+RTMP URL: ${data.rtmpUrl || 'Check console for WebRTC details'}
+Stream Key: ${data.streamKey || 'N/A'}
 Or WebRTC token: ${data.publishToken}`);
           setHasRequestedCohost(false);
         });
@@ -123,6 +126,13 @@ Or WebRTC token: ${data.publishToken}`);
           setError(errorData.message);
           setIsLoading(false);
         });
+
+        // If we already have viewer token in streamData, connect immediately
+        if (streamData.viewerToken) {
+          const roomUrl = streamData.roomUrl || LIVEKIT_URL;
+          await connectToLiveKitRoom(roomUrl, streamData.viewerToken);
+          setIsLoading(false);
+        }
       } catch (err) {
         console.error('Stream initialization error:', err);
         setError(err.message);
@@ -143,33 +153,97 @@ Or WebRTC token: ${data.publishToken}`);
     };
   }, [streamId, navigate]);
 
-  const connectToLiveKitRoom = async (viewerToken) => {
+  const fetchViewerToken = async () => {
     try {
+      const response = await fetch(`https://theclipstream-backend.onrender.com/api/live/${streamId}/token`, {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Fetched viewer token:', data);
+        await connectToLiveKitRoom(data.roomUrl, data.viewerToken);
+      } else {
+        console.error('Failed to fetch viewer token');
+      }
+    } catch (error) {
+      console.error('Error fetching viewer token:', error);
+    }
+  };
+
+  const connectToLiveKitRoom = async (roomUrl, viewerToken) => {
+    try {
+      if (!viewerToken || typeof viewerToken !== 'string') {
+        console.error('Invalid viewer token:', viewerToken);
+        setError('Invalid viewer token');
+        return;
+      }
+
+      console.log('Connecting to LiveKit as viewer:', {
+        roomUrl,
+        tokenLength: viewerToken.length
+      });
+
       const room = new Room();
-      await room.connect(LIVEKIT_URL, viewerToken);
+      await room.connect(roomUrl, viewerToken);
       setLiveKitRoom(room);
 
       // Subscribe to remote tracks (streams from hosts/co-hosts)
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        console.log('Subscribed to track from:', participant.identity);
+        console.log('Subscribed to track from:', participant.identity, 'Kind:', track.kind);
         if (track.kind === Track.Kind.Video) {
           const videoEl = videoRefs.current[participant.identity];
           if (videoEl) {
             track.attach(videoEl);
             videoEl.play().catch(console.error);
+          } else {
+            console.warn('No video element found for participant:', participant.identity);
           }
+        }
+      });
+
+      room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+        console.log('Unsubscribed from track:', participant.identity);
+        if (track.kind === Track.Kind.Video) {
+          track.detach();
         }
       });
 
       room.on(RoomEvent.ParticipantConnected, (participant) => {
         console.log('New participant joined:', participant.identity);
+        subscribeToNewTracks();
       });
+
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        console.log('Participant left:', participant.identity);
+        delete videoRefs.current[participant.identity];
+      });
+
+      // Subscribe to existing participants
+      subscribeToNewTracks();
 
       console.log('LiveKit room connected as viewer');
     } catch (error) {
       console.error('LiveKit viewer connection error:', error);
-      setError('Failed to connect to live stream');
+      setError('Failed to connect to live stream: ' + error.message);
     }
+  };
+
+  const subscribeToNewTracks = () => {
+    if (!liveKitRoom) return;
+
+    liveKitRoom.remoteParticipants.forEach((participant) => {
+      participant.tracks.forEach((publication) => {
+        if (publication.isSubscribed && publication.track?.kind === Track.Kind.Video) {
+          const track = publication.track;
+          const videoEl = videoRefs.current[participant.identity];
+          if (videoEl && !videoEl.srcObject) {
+            track.attach(videoEl);
+            videoEl.play().catch(console.error);
+          }
+        }
+      });
+    });
   };
 
   // Auto-scroll comments
@@ -226,6 +300,13 @@ Or WebRTC token: ${data.publishToken}`);
     }
   };
 
+  const requestCohost = () => {
+    if (!hasRequestedCohost && socketRef.current) {
+      socketRef.current.emit('request-cohost', { streamId });
+      setHasRequestedCohost(true);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center text-white">
@@ -255,6 +336,9 @@ Or WebRTC token: ${data.publishToken}`);
       </div>
     );
   }
+
+  const participants = liveKitRoom?.remoteParticipants ? Array.from(liveKitRoom.remoteParticipants.values()) : [];
+  const gridCols = participants.length > 1 ? 'grid-cols-2' : 'grid-cols-1';
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -289,27 +373,35 @@ Or WebRTC token: ${data.publishToken}`);
       {/* Main Content */}
       <div className="relative">
         {/* Video Stream Area - Grid for multi-host */}
-        <div
-          className="relative aspect-[9/16] bg-gray-900 max-h-screen grid"
-          style={{ gridTemplateColumns: (liveKitRoom?.remoteParticipants.size || 0) + 1 === 1 ? '1fr' : '1fr 1fr' }}
-        >
-          {/* Render videos from LiveKit participants */}
-          {Array.from(liveKitRoom?.remoteParticipants.values() || []).map((participant) => (
-            <div key={participant.identity} className="relative">
-              <video
-                autoPlay
-                playsInline
-                controls={false}
-                className="absolute inset-0 w-full h-full object-cover"
-                ref={(el) => (videoRefs.current[participant.identity] = el)}
-              />
-              <div className="absolute top-2 left-2 bg-black/50 p-1 rounded text-sm">
-                @{participant.identity}
+        <div className={`relative aspect-[9/16] bg-gray-900 max-h-screen grid ${gridCols} gap-1`}>
+          {participants.length === 0 ? (
+            <div className="flex items-center justify-center bg-gray-800">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <Camera className="w-8 h-8 text-white" />
+                </div>
+                <p className="text-gray-400">Connecting to stream...</p>
               </div>
             </div>
-          ))}
+          ) : (
+            participants.map((participant) => (
+              <div key={participant.identity} className="relative bg-gray-800">
+                <video
+                  autoPlay
+                  playsInline
+                  controls={false}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  ref={(el) => (videoRefs.current[participant.identity] = el)}
+                />
+                <div className="absolute top-2 left-2 bg-black/50 p-1 rounded text-sm">
+                  @{participant.identity}
+                </div>
+              </div>
+            ))
+          )}
+          
           {/* Hearts overlay */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden col-span-full">
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
             {hearts.map((heart) => (
               <div
                 key={heart.id}
@@ -325,7 +417,7 @@ Or WebRTC token: ${data.publishToken}`);
           </div>
 
           {/* Action buttons */}
-          <div className="absolute right-4 bottom-32 flex flex-col space-y-4 z-20 col-span-full">
+          <div className="absolute right-4 bottom-32 flex flex-col space-y-4 z-20">
             <button
               onClick={sendHeart}
               className="w-12 h-12 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-red-500/50 transition-colors"
@@ -339,19 +431,17 @@ Or WebRTC token: ${data.publishToken}`);
               <Share2 className="w-6 h-6 text-white" />
             </button>
             <button
-              onClick={() => {
-                if (!hasRequestedCohost) {
-                  socketRef.current.emit('request-cohost', { streamId });
-                  setHasRequestedCohost(true);
-                }
-              }}
+              onClick={requestCohost}
               disabled={hasRequestedCohost}
               className="w-12 h-12 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-blue-500/50 transition-colors disabled:opacity-50"
+              title={hasRequestedCohost ? "Request sent" : "Request to co-host"}
             >
               <Camera className="w-6 h-6 text-blue-500" />
             </button>
           </div>
         </div>
+
+        
 
         {/* Comments Section */}
         <div className="bg-gray-900 border-t border-gray-800">
