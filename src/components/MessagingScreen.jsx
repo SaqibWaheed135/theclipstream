@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Search, Trash2, Image, Play, X } from 'lucide-react';
+import { Send, ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Search, Trash2, Image, Play, X, Mic } from 'lucide-react';
 import io from 'socket.io-client';
 
 const MessagingScreen = ({ conversationId: propConversationId }) => {
@@ -14,6 +14,10 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const [typingUsers, setTypingUsers] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [signedUrls, setSignedUrls] = useState({});
+  const [recording, setRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
 
   const [deleteModal, setDeleteModal] = useState({
     show: false,
@@ -31,6 +35,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const typingTimeoutRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordingIntervalRef = useRef(null);
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
@@ -86,7 +92,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
       if (selectedConversation && message.conversation === selectedConversation._id) {
         setMessages(prev => [...prev, message]);
-        if (message.key && ['image', 'video'].includes(message.type)) {
+        if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
           fetchSignedUrl(message._id, message.key);
         }
         scrollToBottom();
@@ -159,7 +165,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   useEffect(() => {
     messages.forEach((message) => {
-      if (message.key && !signedUrls[message._id] && ['image', 'video'].includes(message.type)) {
+      if (message.key && !signedUrls[message._id] && ['image', 'video', 'audio'].includes(message.type)) {
         fetchSignedUrl(message._id, message.key);
       }
     });
@@ -230,7 +236,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          content: content || (fileName ? `Sent ${fileName}` : `Sent a ${type}`), // Default content for media
+          content,
           type,
           key,
           fileType,
@@ -241,7 +247,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       if (response.ok) {
         const message = await response.json();
         setMessages(prev => [...prev, message]);
-        if (message.key && ['image', 'video'].includes(message.type)) {
+        if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
           fetchSignedUrl(message._id, message.key);
         }
       } else {
@@ -275,6 +281,112 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         setIsTyping(false);
         socketRef.current.emit('typing-stop', { conversationId: selectedConversation._id });
       }, 1000);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const chunks = [];
+
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorderRef.current.start();
+      setRecording(true);
+      setRecordingDuration(0);
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Failed to access microphone. Please ensure permission is granted.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+      clearInterval(recordingIntervalRef.current);
+    }
+  };
+
+  const cancelRecording = () => {
+    setAudioBlob(null);
+    setAudioUrl(null);
+    setRecordingDuration(0);
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+      clearInterval(recordingIntervalRef.current);
+    }
+  };
+
+  const sendAudioMessage = async () => {
+    if (!audioBlob || !selectedConversation) return;
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const token = localStorage.getItem('token');
+      const fileName = `voice_message_${Date.now()}.webm`;
+      const fileType = 'audio/webm';
+
+      const signedUrlResponse = await fetch(`${API_CONFIG.baseUrl}/messages/media/signed-url`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fileName, fileType })
+      });
+
+      if (!signedUrlResponse.ok) {
+        throw new Error('Failed to get signed URL');
+      }
+
+      const { uploadUrl, key } = await signedUrlResponse.json();
+
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': fileType },
+        body: audioBlob
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload audio');
+      }
+
+      await sendMessage(null, {
+        type: 'audio',
+        key,
+        fileType,
+        fileName
+      });
+
+      setUploadProgress(100);
+      alert('✅ Voice message sent!');
+    } catch (error) {
+      console.error('Error sending audio message:', error);
+      alert('❌ Failed to send voice message');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      setAudioBlob(null);
+      setAudioUrl(null);
+      setRecordingDuration(0);
     }
   };
 
@@ -362,7 +474,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
         await sendMessage(null, {
           type: messageType,
-          content: `Sent ${file.name}`, // Add default content
           key,
           fileType: file.type,
           fileName: file.name
@@ -426,9 +537,16 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   };
 
+  const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const getFileIcon = (type) => {
     if (type === 'image') return <Image className="w-4 h-4" />;
     if (type === 'video') return <Play className="w-4 h-4" />;
+    if (type === 'audio') return <Mic className="w-4 h-4" />;
     return <Image className="w-4 h-4" />;
   };
 
@@ -533,6 +651,28 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                     >
                       <source src={signedUrls[message._id]} type={message.fileType || 'video/mp4'} />
                     </video>
+                    {message.fileName && (
+                      <p className="text-xs text-gray-400">{message.fileName}</p>
+                    )}
+                  </div>
+                )}
+
+                {message.type === 'audio' && signedUrls[message._id] && (
+                  <div>
+                    <audio
+                      controls
+                      className="w-full mb-2"
+                      preload="auto"
+                      onError={(e) => {
+                        console.error('Audio load error:', {
+                          src: e.target.currentSrc,
+                          error: e.target.error,
+                          message,
+                        });
+                      }}
+                    >
+                      <source src={signedUrls[message._id]} type={message.fileType || 'audio/webm'} />
+                    </audio>
                     {message.fileName && (
                       <p className="text-xs text-gray-400">{message.fileName}</p>
                     )}
@@ -772,16 +912,32 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                       }
                     }}
                     placeholder="Type a message..."
-                    disabled={sending}
+                    disabled={sending || recording}
                     className="w-full px-4 py-2 pr-12 bg-gray-900 border border-gray-700 rounded-full focus:outline-none focus:ring-2 focus:ring-pink-500 text-white placeholder-gray-400"
                   />
                   <button className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-700 rounded-full transition-colors">
                     <Smile className="w-4 h-4 text-gray-400" />
                   </button>
                 </div>
+                {recording ? (
+                  <button
+                    onClick={stopRecording}
+                    className="p-2 bg-red-600 hover:bg-red-700 rounded-full transition-colors"
+                  >
+                    <Mic className="w-5 h-5 text-white" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={startRecording}
+                    disabled={sending || newMessage.trim()}
+                    className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-full transition-colors"
+                  >
+                    <Mic className="w-5 h-5 text-white" />
+                  </button>
+                )}
                 <button
                   onClick={sendMessage}
-                  disabled={!newMessage.trim() || sending}
+                  disabled={!newMessage.trim() || sending || recording}
                   className="p-2 bg-pink-600 hover:bg-pink-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-full transition-colors"
                 >
                   {sending ? (
@@ -791,6 +947,11 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                   )}
                 </button>
               </div>
+              {recording && (
+                <div className="mt-2 text-center text-sm text-gray-400">
+                  Recording... {formatDuration(recordingDuration)}
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -941,6 +1102,55 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                 </p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {audioUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Voice Message</h3>
+              <button
+                onClick={cancelRecording}
+                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <audio controls className="w-full">
+                <source src={audioUrl} type="audio/webm" />
+              </audio>
+              <p className="text-sm text-gray-400 mt-2">Duration: {formatDuration(recordingDuration)}</p>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={cancelRecording}
+                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={sendAudioMessage}
+                disabled={uploading}
+                className="px-6 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center space-x-2"
+              >
+                {uploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Uploading... {uploadProgress}%</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Send Voice Message</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -73,6 +73,14 @@ const LiveScreen = () => {
     }
   }, [isLive]);
 
+  useEffect(() => {
+    if (isLive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch((err) => {
+        console.error('Error playing video in live mode:', err);
+      });
+    }
+  }, [isLive]);
   // Get user media
   const getUserMedia = async () => {
     try {
@@ -131,10 +139,15 @@ const LiveScreen = () => {
     try {
       console.log('Requesting user media...');
       setConnectionStatus('connecting');
-      const stream = await getUserMedia();
-      console.log('User media obtained:', stream);
+      //const stream = await getUserMedia();
+      // ✅ ensure preview stream is still there
+      if (!streamRef.current) {
+        streamRef.current = await getUserMedia();
+      }
 
-      console.log('Creating live stream on backend...');
+      //console.log('User media obtained:', stream);
+
+      //console.log('Creating live stream on backend...');
       const token = localStorage.getItem('token');
       const response = await fetch('https://theclipstream-backend.onrender.com/api/live/create', {
         method: 'POST',
@@ -158,6 +171,13 @@ const LiveScreen = () => {
       console.log('Stream created:', streamData);
       setStreamId(streamData.streamId);
 
+      // Display RTMP details to the user
+      if (streamData.rtmpUrl && streamData.streamKey) {
+        alert(`Use these details in OBS Studio to stream:
+        RTMP URL: ${streamData.rtmpUrl}
+        Stream Key: ${streamData.streamKey}`);
+      }
+
       console.log('Joining stream room...');
       socketRef.current.emit('join-stream', {
         streamId: streamData.streamId,
@@ -166,6 +186,11 @@ const LiveScreen = () => {
       });
 
       setIsLive(true);
+      if (videoRef.current && streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play();
+      }
+
       setIsStreaming(true);
       setConnectionStatus('live');
       console.log('Live stream started successfully');
@@ -290,16 +315,15 @@ const LiveScreen = () => {
           <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
             <h1 className="text-xl font-bold text-center">Go LIVE</h1>
             <div className="text-center mt-1">
-              <span className={`text-xs px-2 py-1 rounded-full ${
-                connectionStatus === 'connected' ? 'bg-green-500/20 text-green-400' :
+              <span className={`text-xs px-2 py-1 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500/20 text-green-400' :
                 connectionStatus === 'connecting' ? 'bg-yellow-500/20 text-yellow-400' :
-                connectionStatus === 'error' ? 'bg-red-500/20 text-red-400' :
-                'bg-gray-500/20 text-gray-400'
-              }`}>
+                  connectionStatus === 'error' ? 'bg-red-500/20 text-red-400' :
+                    'bg-gray-500/20 text-gray-400'
+                }`}>
                 {connectionStatus === 'connected' ? '🟢 Ready to go live' :
-                 connectionStatus === 'connecting' ? '🟡 Connecting...' :
-                 connectionStatus === 'error' ? '🔴 Connection error' :
-                 '⚫ Connecting to server...'}
+                  connectionStatus === 'connecting' ? '🟡 Connecting...' :
+                    connectionStatus === 'error' ? '🔴 Connection error' :
+                      '⚫ Connecting to server...'}
               </span>
             </div>
           </div>
@@ -380,6 +404,7 @@ const LiveScreen = () => {
           </div>
         </>
       ) : (
+
         <div className="relative h-screen bg-gray-900 overflow-hidden">
           <video
             ref={videoRef}
@@ -400,6 +425,7 @@ const LiveScreen = () => {
               >
                 <Heart className="w-8 h-8 text-red-500 fill-red-500" />
               </div>
+
             ))}
           </div>
           <div className="absolute top-4 left-4 z-20">
@@ -428,9 +454,8 @@ const LiveScreen = () => {
               <div className="space-y-2">
                 {comments.slice(-5).map((comment, index) => (
                   <div key={index} className="flex items-center space-x-2">
-                    <div className={`w-6 h-6 rounded-full ${
-                      ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-yellow-500'][index % 5]
-                    }`}></div>
+                    <div className={`w-6 h-6 rounded-full ${['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-yellow-500'][index % 5]
+                      }`}></div>
                     <span className="text-white font-semibold text-sm">{comment.username || 'Anonymous'}</span>
                     <span className="text-gray-300 text-sm">{comment.text}</span>
                   </div>
