@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Share2, Users, Send, ArrowLeft } from 'lucide-react';
 import io from 'socket.io-client';
 import { useParams, useNavigate } from 'react-router-dom';
+import Hls from 'hls.js';
 
 const LiveViewer = () => {
   const { streamId } = useParams();
   const navigate = useNavigate();
-  
+
   const [stream, setStream] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewers, setViewers] = useState(0);
@@ -15,7 +16,7 @@ const LiveViewer = () => {
   const [hearts, setHearts] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(null);
-  
+
   const socketRef = useRef(null);
   const videoRef = useRef(null);
   const commentsEndRef = useRef(null);
@@ -25,7 +26,7 @@ const LiveViewer = () => {
     const initializeStream = async () => {
       try {
         setIsLoading(true);
-        
+
         // Fetch stream info
         const response = await fetch(`https://theclipstream-backend.onrender.com/api/live/${streamId}`, {
           credentials: 'include'
@@ -48,7 +49,7 @@ const LiveViewer = () => {
         socketRef.current.on('connect', () => {
           setIsConnected(true);
           console.log('Connected to live stream');
-          
+
           // Join stream as viewer
           socketRef.current.emit('join-stream', {
             streamId,
@@ -126,7 +127,7 @@ const LiveViewer = () => {
       streamId,
       text: newComment.trim()
     });
-    
+
     setNewComment('');
   };
 
@@ -137,15 +138,26 @@ const LiveViewer = () => {
       addHeart();
     }
   };
+  useEffect(() => {
+  if (stream && stream.playbackUrl && videoRef.current) {
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(stream.playbackUrl); // e.g. https://cdn.com/live/streamId/index.m3u8
+      hls.attachMedia(videoRef.current);
+    } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+      videoRef.current.src = stream.playbackUrl;
+    }
+  }
+}, [stream]);
 
   // Add heart animation
   const addHeart = () => {
     const heartId = Date.now() + Math.random();
-    setHearts(prev => [...prev, { 
-      id: heartId, 
+    setHearts(prev => [...prev, {
+      id: heartId,
       x: Math.random() * 80 + 10 // 10-90% from left
     }]);
-    
+
     setTimeout(() => {
       setHearts(prev => prev.filter(h => h.id !== heartId));
     }, 3000);
@@ -236,7 +248,7 @@ const LiveViewer = () => {
         {/* Video Stream Area */}
         <div className="relative aspect-[9/16] bg-gray-900 max-h-screen">
           {/* Placeholder for WebRTC video stream */}
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+          {/* <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
             <div className="text-center">
               <div className="w-20 h-20 bg-red-500 rounded-full mx-auto mb-4 flex items-center justify-center">
                 <span className="text-3xl">🔴</span>
@@ -248,6 +260,16 @@ const LiveViewer = () => {
                 <span>{viewers} watching</span>
               </div>
             </div>
+          </div> */}
+
+          <div className="relative aspect-[9/16] bg-gray-900 max-h-screen">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              controls={false}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
           </div>
 
           {/* Hearts animation overlay */}
@@ -292,9 +314,8 @@ const LiveViewer = () => {
                 <MessageCircle className="w-5 h-5" />
                 <span>Live Chat</span>
               </h3>
-              <div className={`text-sm px-2 py-1 rounded-full ${
-                isConnected ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-              }`}>
+              <div className={`text-sm px-2 py-1 rounded-full ${isConnected ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                }`}>
                 {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
               </div>
             </div>
