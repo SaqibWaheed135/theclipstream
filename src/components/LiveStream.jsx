@@ -25,9 +25,6 @@ const LiveScreen = () => {
   const socketRef = useRef(null);
   const localVideoRef = useRef(null);
 
-  // Use environment variable for LiveKit URL, fallback to placeholder if not set
-  const LIVEKIT_URL = process.env.REACT_APP_LIVEKIT_URL || 'wss://theclipstream-q0jt88zr.livekit.cloud';
-
   // Initialize socket connection
   useEffect(() => {
     socketRef.current = io('https://theclipstream-backend.onrender.com', {
@@ -103,6 +100,7 @@ const LiveScreen = () => {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
+      // Set up preview video
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.play().catch(console.error);
@@ -111,7 +109,15 @@ const LiveScreen = () => {
       return stream;
     } catch (error) {
       console.error('Error accessing media devices:', error);
-      alert('Could not access camera/microphone. Please check permissions.');
+      let errorMessage = 'Could not access camera/microphone. Please check permissions.';
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Camera/microphone access denied. Please allow access in your browser settings.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No camera or microphone found. Please ensure devices are connected.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage = 'Camera or microphone is already in use by another application.';
+      }
+      alert(errorMessage);
       throw error;
     }
   };
@@ -149,6 +155,12 @@ const LiveScreen = () => {
         streamRef.current = await getUserMedia();
       }
 
+      console.log('Stream tracks before publishing:', streamRef.current.getTracks().map(t => ({
+        kind: t.kind,
+        enabled: t.enabled,
+        readyState: t.readyState
+      })));
+
       const token = localStorage.getItem('token');
       console.log('Creating live stream via API...');
       
@@ -168,70 +180,60 @@ const LiveScreen = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('API Response Error:', errorData);
         throw new Error(`Failed to create live stream: ${errorData.msg || response.statusText}`);
       }
 
       const streamData = await response.json();
       console.log('Stream data from backend:', streamData);
 
-      // Validate publishToken
-      if (!streamData.publishToken || typeof streamData.publishToken !== 'string') {
-        console.error('Invalid publishToken received:', streamData.publishToken);
-        throw new Error('Invalid publish token received from server');
-      }
-
-      // Validate roomUrl
-      if (!streamData.roomUrl || !streamData.roomUrl.startsWith('wss://')) {
-        console.error('Invalid roomUrl received:', streamData.roomUrl);
-        throw new Error('Invalid room URL received from server');
-      }
-
       setStreamId(streamData.streamId);
       setCurrentStream(streamData.stream);
 
-      // Connect to LiveKit room
-      console.log('Connecting to LiveKit room...');
-      const room = new Room();
-      
-      try {
-        await room.connect(streamData.roomUrl, streamData.publishToken);
-        console.log('Connected to LiveKit room successfully');
-      } catch (liveKitError) {
-        console.error('LiveKit connection failed:', liveKitError);
-        throw new Error(`Failed to connect to LiveKit: ${liveKitError.message}`);
+      // FIRST: Set up local video display immediately
+      if (videoRef.current && streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(console.error);
+        console.log('Local video display set up successfully');
       }
 
-      // FIXED: Clone the tracks to avoid conflicts between local video and LiveKit
-      if (streamRef.current) {
+      // THEN: Connect to LiveKit if we have the tokens
+      if (streamData.publishToken && streamData.roomUrl) {
         try {
-          console.log('Publishing tracks to LiveKit...');
-          const tracks = streamRef.current.getTracks();
+          console.log('Connecting to LiveKit room...');
+          const room = new Room();
           
+          await room.connect(streamData.roomUrl, streamData.publishToken);
+          console.log('Connected to LiveKit room successfully');
+
+          // Create separate media stream for LiveKit to avoid conflicts
+          const liveKitConstraints = {
+            video: {
+              width: { min: 320, ideal: 720, max: 1280 },
+              height: { min: 240, ideal: 1280, max: 720 },
+              facingMode: 'user',
+            },
+            audio: true,
+          };
+
+          const liveKitStream = await navigator.mediaDevices.getUserMedia(liveKitConstraints);
+          
+          // Publish the separate stream to LiveKit
+          const tracks = liveKitStream.getTracks();
           for (const track of tracks) {
-            console.log('Publishing track:', track.kind);
+            console.log('Publishing track to LiveKit:', track.kind);
             await room.localParticipant.publishTrack(track, {
-              // FIXED: Add track options to ensure proper handling
               name: track.kind === 'video' ? 'camera' : 'microphone',
             });
           }
-          
-          // FIXED: Keep the original stream for local display
-          // Don't reassign streamRef.current, keep it for local video
-          if (videoRef.current) {
-            // FIXED: Use the same stream reference for live video
-            videoRef.current.srcObject = streamRef.current;
-            videoRef.current.play().catch(console.error);
-          }
-          
-        } catch (publishError) {
-          console.error('Failed to publish tracks:', publishError);
-          throw new Error(`Failed to publish video/audio: ${publishError.message}`);
+
+          setLiveKitRoom(room);
+          console.log('LiveKit publishing completed');
+
+        } catch (liveKitError) {
+          console.error('LiveKit setup failed, but continuing with basic stream:', liveKitError);
+          // Continue without LiveKit - the basic stream still works
         }
       }
-
-      setLiveKitRoom(room);
-      setIsStreaming(true);
 
       // Join stream via socket
       console.log('Joining stream via socket...');
@@ -242,15 +244,12 @@ const LiveScreen = () => {
       });
 
       setIsLive(true);
+      setIsStreaming(true);
       setConnectionStatus('live');
       console.log('Live stream started successfully!');
       
     } catch (error) {
       console.error('Error starting live stream:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack
-      });
       setConnectionStatus('error');
       alert('Failed to start live stream: ' + error.message);
       stopStream();
@@ -268,17 +267,16 @@ const LiveScreen = () => {
         console.log('Disconnected from LiveKit room');
       }
 
-      // FIXED: Don't stop tracks immediately, handle them properly
+      // Clear video elements
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+
+      // Stop local media tracks
       if (streamRef.current) {
-        // Clear video elements first
-        if (videoRef.current) {
-          videoRef.current.srcObject = null;
-        }
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = null;
-        }
-        
-        // Then stop tracks
         streamRef.current.getTracks().forEach((track) => {
           track.stop();
           console.log('Stopped track:', track.kind);
@@ -316,7 +314,8 @@ const LiveScreen = () => {
     setConnectionStatus('disconnected');
     setCurrentStream(null);
     setCohostRequests([]);
-    // FIXED: Re-initialize camera preview with a slight delay
+    
+    // Re-initialize camera preview with delay
     setTimeout(() => {
       getUserMedia().catch(console.error);
     }, 1000);
@@ -351,29 +350,41 @@ const LiveScreen = () => {
     }, 3000);
   };
 
-  const toggleMute = () => {
+  const toggleMute = async () => {
+    if (liveKitRoom) {
+      // Use LiveKit's built-in methods when streaming
+      const currentlyMuted = !liveKitRoom.localParticipant.isMicrophoneEnabled;
+      await liveKitRoom.localParticipant.setMicrophoneEnabled(currentlyMuted);
+      setIsMuted(!currentlyMuted);
+    }
+    
+    // Also control local stream
     if (streamRef.current) {
       const audioTrack = streamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-        // FIXED: Update LiveKit track state properly
-        if (liveKitRoom) {
-          liveKitRoom.localParticipant.setMicrophoneEnabled(audioTrack.enabled);
+        if (!liveKitRoom) {
+          setIsMuted(!audioTrack.enabled);
         }
       }
     }
   };
 
-  const toggleVideo = () => {
+  const toggleVideo = async () => {
+    if (liveKitRoom) {
+      // Use LiveKit's built-in methods when streaming
+      const currentlyOff = !liveKitRoom.localParticipant.isCameraEnabled;
+      await liveKitRoom.localParticipant.setCameraEnabled(!currentlyOff);
+      setIsVideoOff(currentlyOff);
+    }
+    
+    // Also control local stream
     if (streamRef.current) {
       const videoTrack = streamRef.current.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoOff(!videoTrack.enabled);
-        // FIXED: Update LiveKit track state properly
-        if (liveKitRoom) {
-          liveKitRoom.localParticipant.setCameraEnabled(videoTrack.enabled);
+        if (!liveKitRoom) {
+          setIsVideoOff(!videoTrack.enabled);
         }
       }
     }
