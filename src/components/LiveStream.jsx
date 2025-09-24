@@ -105,7 +105,7 @@ const LiveScreen = () => {
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
-        localVideoRef.current.play();
+        localVideoRef.current.play().catch(console.error);
       }
 
       return stream;
@@ -141,13 +141,17 @@ const LiveScreen = () => {
 
     try {
       setConnectionStatus('connecting');
+      console.log('Starting live stream process...');
       
       // Ensure we have media stream
       if (!streamRef.current) {
+        console.log('Getting user media...');
         streamRef.current = await getUserMedia();
       }
 
       const token = localStorage.getItem('token');
+      console.log('Creating live stream via API...');
+      
       const response = await fetch('https://theclipstream-backend.onrender.com/api/live/create', {
         method: 'POST',
         headers: {
@@ -164,6 +168,7 @@ const LiveScreen = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('API Response Error:', errorData);
         throw new Error(`Failed to create live stream: ${errorData.msg || response.statusText}`);
       }
 
@@ -186,27 +191,43 @@ const LiveScreen = () => {
       setCurrentStream(streamData.stream);
 
       // Connect to LiveKit room
+      console.log('Connecting to LiveKit room...');
       const room = new Room();
-      console.log('Connecting to LiveKit room:', {
-        url: streamData.roomUrl,
-        tokenLength: streamData.publishToken.length
-      });
       
-      await room.connect(streamData.roomUrl, streamData.publishToken);
-      console.log('Connected to LiveKit room successfully');
+      try {
+        await room.connect(streamData.roomUrl, streamData.publishToken);
+        console.log('Connected to LiveKit room successfully');
+      } catch (liveKitError) {
+        console.error('LiveKit connection failed:', liveKitError);
+        throw new Error(`Failed to connect to LiveKit: ${liveKitError.message}`);
+      }
 
       // Publish local tracks
       if (streamRef.current) {
-        for (const track of streamRef.current.getTracks()) {
-          console.log('Publishing track:', track.kind);
-          await room.localParticipant.publishTrack(track);
+        try {
+          console.log('Publishing tracks to LiveKit...');
+          const tracks = streamRef.current.getTracks();
+          for (const track of tracks) {
+            console.log('Publishing track:', track.kind);
+            await room.localParticipant.publishTrack(track);
+          }
+        } catch (publishError) {
+          console.error('Failed to publish tracks:', publishError);
+          throw new Error(`Failed to publish video/audio: ${publishError.message}`);
         }
       }
 
       setLiveKitRoom(room);
       setIsStreaming(true);
 
+      // Display local stream in the live video element
+      if (videoRef.current && streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(console.error);
+      }
+
       // Join stream via socket
+      console.log('Joining stream via socket...');
       socketRef.current.emit('join-stream', {
         streamId: streamData.streamId,
         isStreamer: true,
@@ -215,8 +236,14 @@ const LiveScreen = () => {
 
       setIsLive(true);
       setConnectionStatus('live');
+      console.log('Live stream started successfully!');
+      
     } catch (error) {
       console.error('Error starting live stream:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
       setConnectionStatus('error');
       alert('Failed to start live stream: ' + error.message);
       stopStream();
@@ -225,16 +252,30 @@ const LiveScreen = () => {
 
   const stopStream = async () => {
     try {
+      console.log('Stopping stream...');
+      
       // Stop local media tracks
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          console.log('Stopped track:', track.kind);
+        });
         streamRef.current = null;
+      }
+
+      // Clear video elements
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
       }
 
       // Disconnect LiveKit room
       if (liveKitRoom) {
         await liveKitRoom.disconnect();
         setLiveKitRoom(null);
+        console.log('Disconnected from LiveKit room');
       }
 
       // End stream via socket
@@ -308,7 +349,7 @@ const LiveScreen = () => {
         setIsMuted(!audioTrack.enabled);
         // Update LiveKit track if publishing
         if (liveKitRoom) {
-          liveKitRoom.localParticipant.setMicrophoneEnabled(!isMuted);
+          liveKitRoom.localParticipant.setMicrophoneEnabled(audioTrack.enabled);
         }
       }
     }
@@ -322,7 +363,7 @@ const LiveScreen = () => {
         setIsVideoOff(!videoTrack.enabled);
         // Update LiveKit track if publishing
         if (liveKitRoom) {
-          liveKitRoom.localParticipant.setCameraEnabled(!isVideoOff);
+          liveKitRoom.localParticipant.setCameraEnabled(videoTrack.enabled);
         }
       }
     }
