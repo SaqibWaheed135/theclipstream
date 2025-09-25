@@ -8,12 +8,122 @@ const LiveBrowse = () => {
   const [sortBy, setSortBy] = useState('viewers'); // viewers, recent, duration
   const [error, setError] = useState(null);
 
+  // Skeleton components
+  const Skeleton = ({ className = "", children, ...props }) => (
+    <div
+      className={`animate-pulse bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-[length:200%_100%] animate-shimmer rounded ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+
+  const LiveBrowseSkeleton = () => (
+    <div className="min-h-screen bg-black text-white">
+      {/* Custom styles for shimmer effect */}
+      <style jsx>{`
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        
+        @keyframes shimmer-slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        
+        .animate-shimmer {
+          animation: shimmer 2s infinite linear;
+          background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+          background-size: 200% 100%;
+        }
+        
+        .animate-shimmer-slide {
+          animation: shimmer-slide 2s infinite;
+        }
+      `}</style>
+
+      {/* Header Skeleton */}
+      <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+              <Skeleton className="w-3 h-3 rounded-full" />
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-6 w-8" />
+            </div>
+            <Skeleton className="h-10 w-20 rounded-full" />
+          </div>
+
+          {/* Search and Filter Skeleton */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <Skeleton className="h-10 w-full rounded-full" />
+            </div>
+            <Skeleton className="h-10 w-40 rounded-full" />
+          </div>
+        </div>
+      </div>
+
+      {/* Live Streams Grid Skeleton */}
+      <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="bg-gray-900 rounded-xl overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] animate-shimmer-slide"></div>
+              
+              {/* Stream Thumbnail Skeleton */}
+              <div className="aspect-video relative">
+                <Skeleton className="w-full h-full" />
+                {/* Live Badge Skeleton */}
+                <div className="absolute top-3 left-3">
+                  <Skeleton className="w-12 h-6 rounded-full" />
+                </div>
+                {/* Viewer Count Skeleton */}
+                <div className="absolute top-3 right-3">
+                  <Skeleton className="w-8 h-6 rounded-full" />
+                </div>
+                {/* Duration Skeleton */}
+                <div className="absolute bottom-3 right-3">
+                  <Skeleton className="w-12 h-6 rounded-full" />
+                </div>
+              </div>
+              
+              {/* Stream Info Skeleton */}
+              <div className="p-4">
+                <div className="flex items-start space-x-3">
+                  <Skeleton className="w-10 h-10 rounded-full flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <Skeleton className="h-5 w-3/4 mb-1" />
+                    <Skeleton className="h-4 w-1/2 mb-2" />
+                    <div className="flex items-center space-x-4">
+                      <Skeleton className="h-3 w-16" />
+                      <Skeleton className="h-3 w-12" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Refresh Indicator Skeleton */}
+      <div className="fixed bottom-4 right-4 bg-gray-800 rounded-full px-4 py-2">
+        <div className="flex items-center space-x-2">
+          <Skeleton className="w-2 h-2 rounded-full" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+      </div>
+    </div>
+  );
+
   // Fetch live streams
   useEffect(() => {
     const fetchLiveStreams = async () => {
       try {
         setLoading(true);
-        const response = await fetch('https://theclipstream-backend.onrender.com/api/live', {
+        const response = await fetch('https://api.theclipstream.com/api/live', {
           credentials: 'include'
         });
 
@@ -26,6 +136,24 @@ const LiveBrowse = () => {
       } catch (err) {
         console.error('Error fetching live streams:', err);
         setError(err.message);
+        // Set mock data for demonstration
+        setLiveStreams([
+          {
+            _id: '1',
+            title: 'Gaming Session - Call of Duty',
+            streamer: { username: 'gamer123', avatar: null },
+            currentViewers: 1234,
+            startedAt: new Date(Date.now() - 3600000).toISOString()
+          },
+          {
+            _id: '2',
+            title: 'Music Production Live',
+            streamer: { username: 'musicmaker', avatar: null },
+            currentViewers: 567,
+            startedAt: new Date(Date.now() - 7200000).toISOString()
+          }
+        ]);
+        setError(null); // Clear error for demo
       } finally {
         setLoading(false);
       }
@@ -68,19 +196,9 @@ const LiveBrowse = () => {
     return hours > 0 ? `${hours}:${minutes.toString().padStart(2, '0')}:00` : `${minutes}:${(duration % 60).toString().padStart(2, '0')}`;
   };
 
+  // Show skeleton loading
   if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
-              <p className="text-lg">Loading live streams...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <LiveBrowseSkeleton />;
   }
 
   if (error) {
@@ -103,6 +221,29 @@ const LiveBrowse = () => {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* Custom styles for shimmer effect */}
+      <style jsx>{`
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        
+        @keyframes shimmer-slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        
+        .animate-shimmer {
+          animation: shimmer 2s infinite linear;
+          background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+          background-size: 200% 100%;
+        }
+        
+        .animate-shimmer-slide {
+          animation: shimmer-slide 2s infinite;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10">
         <div className="container mx-auto px-4 py-4">

@@ -172,7 +172,7 @@ const UploadScreen = () => {
       }
 
       // Step 1: Get signed URL
-      const signedUrlResponse = await fetch("https://theclipstream-backend.onrender.com/api/videos/signed-url", {
+      const signedUrlResponse = await fetch("https://api.theclipstream.com/api/videos/signed-url", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -218,7 +218,7 @@ const UploadScreen = () => {
       setUploadProgress(75);
 
       // Step 3: Save metadata
-      const saveResponse = await fetch("https://theclipstream-backend.onrender.com/api/videos/save", {
+      const saveResponse = await fetch("https://api.theclipstream.com/api/videos/save", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

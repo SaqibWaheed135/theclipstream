@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
+import logo from "../assets/logo.png"; // Assuming logo.png exists in src/assets
 
 // Load Google Identity Services script
 const loadGoogleScript = () => {
@@ -54,7 +55,7 @@ export default function Signup() {
     }
 
     try {
-      const res = await axios.post("https://theclipstream-backend.onrender.com/api/auth/signup", { 
+      const res = await axios.post("https://api.theclipstream.com/api/auth/signup", { 
         username, 
         email, 
         password 
@@ -97,7 +98,6 @@ export default function Signup() {
       }
 
       try {
-        // Load Google script
         await loadGoogleScript();
         
         if (window.google && window.google.accounts) {
@@ -109,10 +109,8 @@ export default function Signup() {
             use_fedcm_for_prompt: false
           });
           
-          // Render the button
           const googleButtonDiv = document.getElementById("googleSignInDiv");
           if (googleButtonDiv) {
-            // Clear any existing content
             googleButtonDiv.innerHTML = '';
             
             window.google.accounts.id.renderButton(googleButtonDiv, {
@@ -127,12 +125,11 @@ export default function Signup() {
         }
       } catch (error) {
         console.error("Failed to load Google Sign-In:", error);
-        // Show fallback button or error message
         const googleButtonDiv = document.getElementById("googleSignInDiv");
         if (googleButtonDiv) {
           googleButtonDiv.innerHTML = `
-            <div class="flex items-center justify-center w-full p-3 border border-gray-600 rounded-lg bg-white text-black hover:bg-gray-50 transition-colors cursor-not-allowed opacity-50">
-              <span class="text-sm">Google Sign-In unavailable</span>
+            <div className="flex items-center justify-center w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">
+              <span className="text-sm">Google Sign-In unavailable</span>
             </div>
           `;
         }
@@ -143,127 +140,170 @@ export default function Signup() {
   }, []);
 
   return (
-    <div className="h-screen flex items-center justify-center bg-black">
-      <div className="w-full max-w-sm p-6">
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Create Account</h1>
-          <p className="text-gray-400">Join us today</p>
-        </div>
-
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4">
-            <p className="text-red-400 text-sm text-center">{error}</p>
+    <div className="min-h-screen flex bg-black">
+      {/* Left side - Branding */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-pink-600 to-purple-700 relative overflow-hidden">
+        <div className="absolute inset-0 bg-black bg-opacity-20"></div>
+        <div className="relative z-10 flex flex-col justify-center items-center text-white p-12">
+          {/* Logo from assets */}
+          <div className="mb-8">
+            <img src={logo} alt="ClipStream Logo" className="w-40 h-40 rounded-2xl shadow-2xl" />
           </div>
-        )}
+          
+          <p className="text-xl text-center text-pink-100 max-w-md leading-relaxed">
+            Join us! Create an account to start your creative journey with our powerful video editing platform.
+          </p>
+          
+          {/* Decorative elements */}
+          <div className="absolute top-10 left-10 w-32 h-32 bg-white bg-opacity-10 rounded-full blur-xl"></div>
+          <div className="absolute bottom-10 right-10 w-40 h-40 bg-white bg-opacity-5 rounded-full blur-2xl"></div>
+        </div>
+      </div>
 
-        {/* Google Sign-Up Button */}
-        <div className="mb-6">
-          <div 
-            id="googleSignInDiv" 
-            className={`${googleLoading ? 'opacity-50 pointer-events-none' : ''}`}
-          ></div>
-          {googleLoading && (
-            <div className="flex items-center justify-center mt-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-pink-500"></div>
-              <span className="text-gray-400 text-sm ml-2">Creating account with Google...</span>
+      {/* Right side - Signup Form */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-black px-6 py-12">
+        <div className="w-full max-w-md bg-gray-900 rounded-lg p-8 shadow-xl">
+          {/* Mobile logo */}
+          <div className="lg:hidden text-center mb-8">
+            <img src={logo} alt="ClipStream Logo" className="w-20 h-20 rounded-xl mx-auto mb-4" />
+          </div>
+
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-white mb-2">Create Account</h2>
+            <p className="text-gray-400">Join us today</p>
+          </div>
+
+          {error && (
+            <div className="bg-red-900 border border-red-700 rounded-lg p-4 mb-6">
+              <p className="text-red-300 text-sm text-center">{error}</p>
             </div>
           )}
-        </div>
 
-        {/* Divider */}
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-600"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-black text-gray-400">Or create with email</span>
-          </div>
-        </div>
-
-        {/* Manual Signup Form */}
-        <form className="space-y-4" onSubmit={handleSignup}>
-          <div>
-            <input 
-              type="text" 
-              placeholder="Username" 
-              className="w-full p-3 rounded-lg bg-gray-900 text-white border border-gray-700 focus:border-pink-500 focus:outline-none transition-colors"
-              value={username} 
-              onChange={(e) => setUsername(e.target.value)} 
-              required 
-              disabled={loading}
-              minLength={3}
-              maxLength={30}
-            />
-          </div>
-          
-          <div>
-            <input 
-              type="email" 
-              placeholder="Email" 
-              className="w-full p-3 rounded-lg bg-gray-900 text-white border border-gray-700 focus:border-pink-500 focus:outline-none transition-colors"
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              required 
-              disabled={loading}
-            />
-          </div>
-          
-          <div>
-            <input 
-              type="password" 
-              placeholder="Password" 
-              className="w-full p-3 rounded-lg bg-gray-900 text-white border border-gray-700 focus:border-pink-500 focus:outline-none transition-colors"
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              required 
-              disabled={loading}
-              minLength={6}
-            />
-          </div>
-          
-          <div>
-            <input 
-              type="password" 
-              placeholder="Confirm Password" 
-              className="w-full p-3 rounded-lg bg-gray-900 text-white border border-gray-700 focus:border-pink-500 focus:outline-none transition-colors"
-              value={confirmPassword} 
-              onChange={(e) => setConfirmPassword(e.target.value)} 
-              required 
-              disabled={loading}
-              minLength={6}
-            />
-          </div>
-          
-          <button 
-            type="submit" 
-            className="w-full bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Creating Account...
-              </>
-            ) : (
-              'Sign Up'
+          {/* Google Sign-Up Button */}
+          <div className="mb-6">
+            <div 
+              id="googleSignInDiv" 
+              className={`${googleLoading ? 'opacity-50 pointer-events-none' : ''}`}
+            ></div>
+            {googleLoading && (
+              <div className="flex items-center justify-center mt-3">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-pink-600"></div>
+                <span className="text-gray-400 text-sm ml-2">Creating account with Google...</span>
+              </div>
             )}
-          </button>
-        </form>
+          </div>
 
-        {/* Terms and Privacy */}
-        <p className="text-xs text-gray-500 text-center mt-4">
-          By creating an account, you agree to our{" "}
-          <Link to="/terms" className="text-pink-500 hover:text-pink-400">Terms</Link> and{" "}
-          <Link to="/privacy" className="text-pink-500 hover:text-pink-400">Privacy Policy</Link>
-        </p>
+          {/* Divider */}
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-700"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-gray-900 text-gray-400">Or create with email</span>
+            </div>
+          </div>
 
-        {/* Login Link */}
-        <p className="text-gray-400 text-center mt-6">
-          Already have an account?{" "}
-          <Link to="/login" className="text-pink-500 hover:text-pink-400 transition-colors">
-            Log In
-          </Link>
-        </p>
+          {/* Manual Signup Form */}
+          <form className="space-y-5" onSubmit={handleSignup}>
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-1">
+                Username
+              </label>
+              <input 
+                id="username"
+                type="text" 
+                placeholder="Enter your username"
+                className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
+                value={username} 
+                onChange={(e) => setUsername(e.target.value)} 
+                required 
+                disabled={loading}
+                minLength={3}
+                maxLength={30}
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+                Email address
+              </label>
+              <input 
+                id="email"
+                type="email" 
+                placeholder="Enter your email"
+                className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                required 
+                disabled={loading}
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+                Password
+              </label>
+              <input 
+                id="password"
+                type="password" 
+                placeholder="Enter your password"
+                className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                required 
+                disabled={loading}
+                minLength={6}
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-1">
+                Confirm Password
+              </label>
+              <input 
+                id="confirmPassword"
+                type="password" 
+                placeholder="Confirm your password"
+                className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
+                value={confirmPassword} 
+                onChange={(e) => setConfirmPassword(e.target.value)} 
+                required 
+                disabled={loading}
+                minLength={6}
+              />
+            </div>
+            
+            <button 
+              type="submit" 
+              className="w-full bg-pink-600 hover:bg-pink-700 text-white py-3 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Creating Account...
+                </>
+              ) : (
+                'Sign Up'
+              )}
+            </button>
+          </form>
+
+          {/* Terms and Privacy */}
+          <p className="text-xs text-gray-400 text-center mt-6">
+            By creating an account, you agree to our{" "}
+            <Link to="/terms" className="text-pink-500 hover:text-pink-400">Terms</Link> and{" "}
+            <Link to="/privacy" className="text-pink-500 hover:text-pink-400">Privacy Policy</Link>
+          </p>
+
+          {/* Login Link */}
+          <p className="text-gray-400 text-center mt-4">
+            Already have an account?{" "}
+            <Link to="/login" className="text-pink-500 hover:text-pink-400 font-medium transition-colors">
+              Log In
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

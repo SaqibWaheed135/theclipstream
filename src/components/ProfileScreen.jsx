@@ -32,7 +32,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
   const [savedVideos, setSavedVideos] = useState([]);
 
   // Get API base URL
-  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const API_BASE_URL = 'https://api.theclipstream.com/api';
 
   // Helper function to get auth headers
   const getAuthHeaders = () => {
@@ -42,6 +42,131 @@ const ProfileScreen = ({ userId: propUserId }) => {
       'Content-Type': 'application/json'
     };
   };
+
+  // Skeleton components
+  const Skeleton = ({ className = "", children, ...props }) => (
+    <div
+      className={`animate-pulse bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-[length:200%_100%] animate-shimmer rounded ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+
+  const ProfileSkeleton = () => (
+    <div className="min-h-screen bg-black text-white">
+      {/* Header Skeleton */}
+      <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-5 w-5 rounded-full" />
+          </div>
+          <div className="flex items-center space-x-3">
+            <Skeleton className="w-10 h-10 rounded-full" />
+            <Skeleton className="w-10 h-10 rounded-full" />
+            <Skeleton className="h-10 w-32 rounded-lg" />
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {/* Profile Info Skeleton */}
+        <div className="flex items-start space-x-4 mb-6">
+          <div className="relative">
+            <Skeleton className="w-24 h-24 rounded-full" />
+          </div>
+
+          <div className="flex-1">
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="text-center">
+                <Skeleton className="h-6 w-8 mb-1" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+              <div className="text-center">
+                <Skeleton className="h-6 w-8 mb-1" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+              <div className="text-center">
+                <Skeleton className="h-6 w-8 mb-1" />
+                <Skeleton className="h-4 w-12" />
+              </div>
+            </div>
+
+            <div className="flex space-x-2">
+              <Skeleton className="flex-1 h-10 rounded-lg" />
+              <Skeleton className="h-10 w-20 rounded-lg" />
+            </div>
+          </div>
+        </div>
+
+        {/* Bio Skeleton */}
+        <div className="mb-6">
+          <div className="flex items-center space-x-2 mb-3">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+          </div>
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-3/4 mb-3" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+        </div>
+
+        {/* Stats Cards Skeleton */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <Skeleton className="h-8 w-12 mx-auto mb-2" />
+            <Skeleton className="h-4 w-20 mx-auto" />
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <Skeleton className="h-8 w-12 mx-auto mb-2" />
+            <Skeleton className="h-4 w-20 mx-auto" />
+          </div>
+        </div>
+
+        {/* Tabs Skeleton */}
+        <div className="flex border-b border-gray-800 mb-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex-1 py-3 text-center">
+              <Skeleton className="h-5 w-5 mx-auto mb-1" />
+              <Skeleton className="h-3 w-12 mx-auto" />
+            </div>
+          ))}
+        </div>
+
+        {/* Video Grid Skeleton */}
+        <VideoGridSkeleton />
+      </div>
+    </div>
+  );
+
+  const VideoGridSkeleton = () => (
+    <div className="grid grid-cols-3 gap-1">
+      {Array.from({ length: 9 }, (_, i) => (
+        <div key={i} className="relative aspect-[9/16] overflow-hidden rounded-lg">
+          <Skeleton className="w-full h-full" />
+          {/* Shimmer overlay */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] animate-shimmer-slide"></div>
+          
+          {/* Bottom overlay skeleton */}
+          <div className="absolute bottom-0 left-0 right-0 p-2">
+            <div className="flex justify-between items-end">
+              <div className="flex items-center space-x-1">
+                <Skeleton className="w-3 h-3 rounded-full" />
+                <Skeleton className="h-3 w-8" />
+              </div>
+              <div className="flex items-center space-x-1">
+                <Skeleton className="w-3 h-3 rounded-full" />
+                <Skeleton className="h-3 w-6" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   // Fetch user points from dedicated endpoint
   const fetchUserPoints = async () => {
@@ -409,13 +534,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
 
   const renderVideoGrid = (videos) => {
     if (videoLoading) {
-      return (
-        <div className="grid grid-cols-3 gap-1">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="aspect-[9/16] bg-gray-800 rounded-lg animate-pulse" />
-          ))}
-        </div>
-      );
+      return <VideoGridSkeleton />;
     }
 
     if (videos.length === 0) {
@@ -593,17 +712,9 @@ const ProfileScreen = ({ userId: propUserId }) => {
     </div>
   );
 
-  // Loading screen
+  // Loading screen with skeleton
   if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mx-auto mb-6"></div>
-          <p className="text-gray-400 text-lg mb-2">Loading profile...</p>
-          <p className="text-gray-500 text-sm">Fetching user data from server</p>
-        </div>
-      </div>
-    );
+    return <ProfileSkeleton />;
   }
 
   // If no user data after loading, show error
@@ -645,6 +756,29 @@ const ProfileScreen = ({ userId: propUserId }) => {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* Custom styles for shimmer effect */}
+      <style jsx>{`
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        
+        @keyframes shimmer-slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        
+        .animate-shimmer {
+          animation: shimmer 2s infinite linear;
+          background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+          background-size: 200% 100%;
+        }
+        
+        .animate-shimmer-slide {
+          animation: shimmer-slide 2s infinite;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
         <div className="flex items-center justify-between">
@@ -757,7 +891,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
         <span>Withdraw</span>
       </button>
 
-      
+  
       {/* Transfer Points Button */}
       <button
         onClick={() => (window.location.href = "/transfer-points")}

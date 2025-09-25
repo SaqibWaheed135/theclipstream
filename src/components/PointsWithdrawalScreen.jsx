@@ -33,7 +33,7 @@ const PointsWithdrawalScreen = ({ onBack }) => {
 
   const [validationErrors, setValidationErrors] = useState({});
 
-  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const API_BASE_URL = 'https://api.theclipstream.com/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
@@ -42,6 +42,154 @@ const PointsWithdrawalScreen = ({ onBack }) => {
       'Content-Type': 'application/json'
     };
   };
+
+  // Skeleton components
+  const Skeleton = ({ className = "", children, ...props }) => (
+    <div
+      className={`animate-pulse bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-[length:200%_100%] animate-shimmer rounded ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+
+  const WithdrawalSkeleton = () => (
+    <div className="min-h-screen bg-black text-white">
+      {/* Header Skeleton */}
+      <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Skeleton className="w-10 h-10 rounded-full" />
+            <Skeleton className="h-6 w-32" />
+          </div>
+          <div className="flex items-center space-x-3">
+            <Skeleton className="w-10 h-10 rounded-full" />
+            <div className="text-right">
+              <div className="flex items-center space-x-2 justify-end">
+                <Skeleton className="w-5 h-5 rounded-full" />
+                <Skeleton className="h-6 w-20" />
+              </div>
+              <Skeleton className="h-3 w-16 mt-1" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {/* Balance Card Skeleton */}
+        <div className="bg-gray-900 rounded-xl p-6 mb-6 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] animate-shimmer-slide"></div>
+          <div className="text-center">
+            <div className="flex items-center justify-center space-x-2 mb-2">
+              <Skeleton className="w-8 h-8 rounded-full" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+            <Skeleton className="h-4 w-32 mx-auto mb-1" />
+            <Skeleton className="h-4 w-20 mx-auto mb-2" />
+            <Skeleton className="h-3 w-28 mx-auto" />
+          </div>
+        </div>
+
+        {/* Tabs Skeleton */}
+        <div className="bg-gray-900 rounded-lg p-1 mb-6">
+          <div className="flex">
+            <div className="flex-1 py-3 px-4">
+              <Skeleton className="h-6 w-20 mx-auto" />
+            </div>
+            <div className="flex-1 py-3 px-4">
+              <Skeleton className="h-6 w-16 mx-auto" />
+            </div>
+          </div>
+        </div>
+
+        {/* Content Skeleton */}
+        <div className="space-y-6">
+          {/* Amount Input Skeleton */}
+          <div>
+            <Skeleton className="h-6 w-32 mb-4" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-4 w-48 mt-2" />
+          </div>
+
+          {/* Methods Skeleton */}
+          <div>
+            <Skeleton className="h-6 w-32 mb-4" />
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="p-4 rounded-lg bg-gray-900 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] animate-shimmer-slide"></div>
+                  <div className="flex items-center space-x-3">
+                    <Skeleton className="w-6 h-6 rounded" />
+                    <div className="flex-1">
+                      <Skeleton className="h-5 w-24 mb-1" />
+                      <Skeleton className="h-4 w-48 mb-1" />
+                      <Skeleton className="h-3 w-40" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Form Skeleton */}
+          <div className="bg-gray-900 rounded-xl p-4 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] animate-shimmer-slide"></div>
+            <div className="flex items-center mb-4">
+              <Skeleton className="w-5 h-5 rounded mr-2" />
+              <Skeleton className="h-6 w-32" />
+            </div>
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-12 w-full rounded-lg" />
+              ))}
+            </div>
+          </div>
+
+          {/* Submit Button Skeleton */}
+          <Skeleton className="h-14 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+
+  const HistorySkeleton = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-6 w-32" />
+        <Skeleton className="h-4 w-20" />
+      </div>
+      
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl border border-gray-700 bg-gray-900 p-4 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] animate-shimmer-slide"></div>
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <Skeleton className="w-5 h-5 rounded" />
+                <div>
+                  <Skeleton className="h-6 w-16 mb-1" />
+                  <Skeleton className="h-4 w-12" />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Skeleton className="w-5 h-5 rounded-full" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              {[1, 2, 3, 4].map((j) => (
+                <div key={j} className="flex justify-between">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   const withdrawalMethods = [
     {
@@ -483,19 +631,36 @@ const PointsWithdrawalScreen = ({ onBack }) => {
     }
   };
 
+  // Loading screen with skeleton
   if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-pink-500" />
-          <p className="text-gray-400">Loading withdrawal data...</p>
-        </div>
-      </div>
-    );
+    return <WithdrawalSkeleton />;
   }
 
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* Custom styles for shimmer effect */}
+      <style jsx>{`
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        
+        @keyframes shimmer-slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        
+        .animate-shimmer {
+          animation: shimmer 2s infinite linear;
+          background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+          background-size: 200% 100%;
+        }
+        
+        .animate-shimmer-slide {
+          animation: shimmer-slide 2s infinite;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
         <div className="flex items-center justify-between">
@@ -549,8 +714,6 @@ const PointsWithdrawalScreen = ({ onBack }) => {
             </p>
           </div>
         </div>
-
-
 
         {error && (
           <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-4 flex items-center space-x-2">
@@ -930,6 +1093,10 @@ const PointsWithdrawalScreen = ({ onBack }) => {
                 </button>
               </div>
             ) : (
+              <HistorySkeleton />
+            )}
+
+            {withdrawalHistory.length > 0 && (
               <div className="space-y-4">
                 {withdrawalHistory.map((withdrawal) => (
                   <div
@@ -1137,8 +1304,6 @@ const PointsWithdrawalScreen = ({ onBack }) => {
             )}
           </div>
         )}
-
-
       </div>
     </div>
   );
