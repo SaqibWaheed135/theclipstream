@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
-  BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
   useLocation,
-  useNavigate
+  useNavigate,
 } from "react-router-dom";
 import AdBanner from "./components/AdBanner.jsx";
 
@@ -123,15 +122,18 @@ const App = () => {
   const navigate = useNavigate();
   const [currentScreen, setCurrentScreen] = useState(location.pathname);
 
-  // 👇 State for install prompt
+  // 👇 State for install prompt (Android)
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
+
+  // 👇 State for iOS Safari banner
+  const [showIosBanner, setShowIosBanner] = useState(false);
 
   useEffect(() => {
     setCurrentScreen(location.pathname);
   }, [location]);
 
-  // 👇 Listen for beforeinstallprompt event
+  // 👇 Listen for beforeinstallprompt event (Android)
   useEffect(() => {
     const handler = (e) => {
       e.preventDefault();
@@ -143,7 +145,25 @@ const App = () => {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  // 👇 Handle install click
+  // 👇 Detect iOS Safari
+  useEffect(() => {
+    const isIos = /iphone|ipad|ipod/.test(
+      window.navigator.userAgent.toLowerCase()
+    );
+    const isInStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone;
+
+    if (isIos && !isInStandalone) {
+      const dismissedUntil = localStorage.getItem("iosBannerDismissedUntil");
+      const now = Date.now();
+      if (!dismissedUntil || now > Number(dismissedUntil)) {
+        setShowIosBanner(true);
+      }
+    }
+  }, []);
+
+  // 👇 Handle install click (Android)
   const handleInstallClick = () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -157,6 +177,13 @@ const App = () => {
         setShowInstallButton(false);
       });
     }
+  };
+
+  // 👇 Handle dismiss iOS banner (hide for 1 day)
+  const handleDismissIosBanner = () => {
+    setShowIosBanner(false);
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 1 day
+    localStorage.setItem("iosBannerDismissedUntil", expiresAt.toString());
   };
 
   return (
@@ -188,7 +215,7 @@ const App = () => {
         </Routes>
       </main>
 
-      {/* 👇 Install App button (only shows if browser supports it) */}
+      {/* 👇 Android Install App button */}
       {showInstallButton && (
         <div className="fixed bottom-20 left-0 right-0 flex justify-center z-50">
           <button
@@ -196,6 +223,23 @@ const App = () => {
             className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-md"
           >
             Install App
+          </button>
+        </div>
+      )}
+
+      {/* 👇 iOS Safari Add to Home Screen banner */}
+      {showIosBanner && (
+        <div className="fixed bottom-20 left-4 right-4 bg-yellow-200 text-black px-4 py-3 rounded-lg shadow-md text-center z-50">
+          <p className="font-semibold">📲 Install this app</p>
+          <p className="text-sm mb-2">
+            Tap <span className="font-bold">Share</span> →{" "}
+            <span className="font-bold">Add to Home Screen</span>
+          </p>
+          <button
+            onClick={handleDismissIosBanner}
+            className="mt-2 bg-gray-700 text-white px-3 py-1 rounded-lg text-sm"
+          >
+            Dismiss
           </button>
         </div>
       )}

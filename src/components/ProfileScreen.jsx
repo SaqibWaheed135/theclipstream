@@ -149,7 +149,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
           <Skeleton className="w-full h-full" />
           {/* Shimmer overlay */}
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] animate-shimmer-slide"></div>
-          
+
           {/* Bottom overlay skeleton */}
           <div className="absolute bottom-0 left-0 right-0 p-2">
             <div className="flex justify-between items-end">
@@ -171,7 +171,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
   // Fetch user points from dedicated endpoint
   const fetchUserPoints = async () => {
     if (!isOwnProfile) return; // Only fetch points for own profile
-    
+
     try {
       setPointsLoading(true);
       const response = await fetch(`${API_BASE_URL}/users/points/balance`, {
@@ -355,7 +355,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
   // Fetch user videos with improved error handling
   const fetchUserVideos = async () => {
     if (!user) return;
-    
+
     try {
       setVideoLoading(true);
       let currentUserVideos = [];
@@ -452,7 +452,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
     const initializeProfile = async () => {
       setLoading(true);
       const storedUser = localStorage.getItem("user");
-      
+
       if (storedUser) {
         const userData = JSON.parse(storedUser);
         setCurrentUser(userData);
@@ -594,7 +594,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
                 <Play className="w-8 h-8 text-white opacity-70" />
               </div>
             )}
-            
+
             {/* Fallback gradient (hidden by default) */}
             <div className="hidden w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 items-center justify-center absolute inset-0">
               <Play className="w-8 h-8 text-white opacity-70" />
@@ -827,100 +827,106 @@ const ProfileScreen = ({ userId: propUserId }) => {
             <img
               src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=random&color=fff&size=200&bold=true`}
               alt={`${user.username}'s profile`}
-              className="w-24 h-24 rounded-full object-cover border-2 border-gray-700"
+              className="w-24 h-24 xs:w-28 xs:h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full object-cover border-3 xs:border-4 border-gray-600 shadow-2xl mx-auto ring-2 ring-pink-500/20"
               onError={(e) => {
                 e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=random&color=fff&size=200&bold=true`;
               }}
             />
             {user.isVerified && (
-              <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full p-1">
-                <Shield className="w-3 h-3 text-white" />
+              <div className="absolute -bottom-0.5 -right-0.5 xs:-bottom-1 xs:-right-1 bg-blue-500 rounded-full p-1 xs:p-1.5 shadow-lg border-2 border-black">
+                <Shield className="w-3 h-3 xs:w-4 xs:h-4 text-white" />
               </div>
             )}
             {!isOwnProfile && user.isOnline && (
-              <div className="absolute -bottom-1 -left-1 bg-green-500 rounded-full w-4 h-4 border-2 border-black"></div>
+              <div className="absolute -bottom-0.5 -left-0.5 xs:-bottom-1 xs:-left-1 bg-green-500 rounded-full w-4 h-4 xs:w-5 xs:h-5 border-2 border-black shadow-lg animate-pulse"></div>
             )}
           </div>
 
           <div className="flex-1">
-            <div className="flex items-center space-x-4 mb-4">
+            <div className="flex items-center space-x-1 mb-4">
+              {/* Following */}
+              {/* Following */}
               <div className="text-center">
-                <p className="font-bold text-lg">{user?.following?.length || 0}</p>
-                <p className="text-gray-400 text-sm">Following</p>
+                <p className="font-bold text-sm sm:text-lg">
+                  {user?.following?.length || 0}
+                </p>
+                <p className="text-gray-400 text-[10px] sm:text-sm">Following</p>
               </div>
+
+              {/* Followers */}
               <div className="text-center">
-                <p className="font-bold text-lg">{user?.followers?.length || 0}</p>
-                <p className="text-gray-400 text-sm">Followers</p>
+                <p className="font-bold text-sm sm:text-lg">
+                  {user?.followers?.length || 0}
+                </p>
+                <p className="text-gray-400 text-[10px] sm:text-sm">Followers</p>
               </div>
+
+              {/* Points */}
               <div>
-                
                 <div className="flex items-center justify-center space-x-2 mb-1">
-  <p className="font-bold text-lg text-yellow-400">
-    {pointsLoading ? (
-      <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
-    ) : (
-      formatNumber(isOwnProfile ? userPoints : (user?.points || 0))
-    )}
-  </p>
-  
-</div>
-
-<p className="text-yellow-400 text-sm">Points</p>
-
+                  <p className="font-bold text-sm sm:text-lg text-yellow-400">
+                    {pointsLoading ? (
+                      <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      formatNumber(isOwnProfile ? userPoints : user?.points || 0)
+                    )}
+                  </p>
+                </div>
+                <p className="text-yellow-400 text-[10px] sm:text-sm">Points</p>
               </div>
-              {isOwnProfile && (
-    <div className="flex flex-col space-y-1">
-      {/* Withdraw Button */}
-      <button
-        onClick={() => (window.location.href = "/withdraw-points")}
-        className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs rounded-full transition-colors flex items-center space-x-1"
-      >
-        <svg
-          className="w-3 h-3"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
-          />
-        </svg>
-        <span>Withdraw</span>
-      </button>
 
-  
-      {/* Transfer Points Button */}
-      <button
-        onClick={() => (window.location.href = "/transfer-points")}
-        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-full transition-colors flex items-center space-x-1"
-      >
-        <svg
-          className="w-3 h-3"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1m0-10V5"
-          />
-        </svg>
-        <span>Transfer</span>
-      </button>
-    </div>
-  )}
+              {/* Withdraw / Transfer Buttons */}
+              {isOwnProfile && (
+                <div className="flex flex-col space-y-1">
+                  <button
+                    onClick={() => (window.location.href = "/withdraw-points")}
+                    className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs rounded-full transition-colors flex items-center space-x-1"
+                  >
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
+                      />
+                    </svg>
+                    <span>Withdraw</span>
+                  </button>
+
+                  <button
+                    onClick={() => (window.location.href = "/transfer-points")}
+                    className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-full transition-colors flex items-center space-x-1"
+                  >
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1m0-10V5"
+                      />
+                    </svg>
+                    <span>Transfer</span>
+                  </button>
+                </div>
+              )}
             </div>
 
+            {/* Profile buttons */}
             <div className="flex space-x-2">
               {isOwnProfile ? (
                 <>
                   <button
-                    onClick={() => window.location.href = '/edit-profile'}
+                    onClick={() => (window.location.href = "/edit-profile")}
                     className="flex-1 py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors"
                   >
                     Edit Profile
@@ -962,6 +968,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
               )}
             </div>
           </div>
+
         </div>
 
         {/* Bio Section */}
