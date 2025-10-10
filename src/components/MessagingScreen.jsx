@@ -3,7 +3,8 @@ import { Send, ArrowLeft, MoreVertical, Smile, Paperclip, Search, Trash2, Image,
 import io from 'socket.io-client';
 
 // Group List Component
-const GroupList = ({ groups, selectedGroup, onSelectGroup, onCreateGroup, searchQuery, setSearchQuery }) => {
+const GroupList = ({ groups, selectedGroup, onSelectGroup, onCreateGroup, onJoinGroup, searchQuery, setSearchQuery }) => {
+
   const filteredGroups = groups.filter(group =>
     group.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -16,13 +17,24 @@ const GroupList = ({ groups, selectedGroup, onSelectGroup, onCreateGroup, search
             <Users className="w-5 h-5 mr-2" />
             Groups
           </h2>
-          <button
-            onClick={onCreateGroup}
-            className="p-2 bg-pink-600 hover:bg-pink-700 rounded-full transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={onJoinGroup}
+              className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition-colors"
+              title="Join Group"
+            >
+              <UserPlus className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onCreateGroup}
+              className="p-2 bg-pink-600 hover:bg-pink-700 rounded-full transition-colors"
+              title="Create Group"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -518,8 +530,8 @@ const AddMembersModal = ({ show, groupId, onClose, onAddMembers }) => {
                   key={user._id}
                   onClick={() => toggleUserSelection(user)}
                   className={`w-full p-3 text-left rounded-lg transition-colors ${selectedUsers.some(u => u._id === user._id)
-                      ? 'bg-pink-900/20 border border-pink-500'
-                      : 'hover:bg-gray-800 border border-transparent'
+                    ? 'bg-pink-900/20 border border-pink-500'
+                    : 'hover:bg-gray-800 border border-transparent'
                     }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -654,12 +666,36 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [showGroupInfoModal, setShowGroupInfoModal] = useState(false);
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
 
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+  const joinGroup = async (inviteCode) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/groups/join`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ inviteCode })
+      });
+
+      if (response.ok) {
+        const joinedGroup = await response.json();
+        setGroups(prev => [joinedGroup, ...prev]);
+        setShowJoinGroupModal(false);
+        selectGroup(joinedGroup);
+      } else {
+        const error = await response.json();
+        alert(error.msg || 'Failed to join group');
+      }
+    } catch (error) {
+      console.error('Error joining group:', error);
+      alert('Error joining group');
+    }
+  };
+
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
@@ -1171,9 +1207,11 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
             selectedGroup={selectedGroup}
             onSelectGroup={selectGroup}
             onCreateGroup={() => setShowCreateGroupModal(true)}
+            onJoinGroup={() => setShowJoinGroupModal(true)}
             searchQuery={groupSearchQuery}
             setSearchQuery={setGroupSearchQuery}
           />
+
         )}
       </div>
 
@@ -1339,6 +1377,12 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
         onLeaveGroup={leaveGroup}
         onDeleteGroup={deleteGroup}
       />
+      <JoinGroupModal
+        show={showJoinGroupModal}
+        onClose={() => setShowJoinGroupModal(false)}
+        onJoinGroup={joinGroup}
+      />
+
     </div>
   );
 };
