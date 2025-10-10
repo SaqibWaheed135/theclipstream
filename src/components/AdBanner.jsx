@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const API_URL = "https://api.theclipstream.com/api/admin/auth/getAd"; // ✅ your backend endpoint
+const API_URL = "https://theclipstream-backend.onrender.com/api/admin/auth/getAd"; // ✅ your backend endpoint
 
 const AdBanner = () => {
   const [ads, setAds] = useState([]);

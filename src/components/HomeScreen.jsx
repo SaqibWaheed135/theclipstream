@@ -98,7 +98,7 @@ const HomeScreen = () => {
 
   // Memoized API config with better error handling
   const API_CONFIG = useMemo(() => ({
-    baseUrl: 'https://api.theclipstream.com/api',
+    baseUrl: 'https://theclipstream-backend.onrender.com/api',
     getHeaders: () => {
       const token = localStorage.getItem('token');
       return {

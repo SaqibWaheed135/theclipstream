@@ -40,7 +40,7 @@ const PointsRechargeScreen = ({ onBack }) => {
   const hasAlertedRef = useRef(false);
   const pollingIntervalRef = useRef(null);
 
-  const API_BASE_URL = 'https://api.theclipstream.com/api';
+  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");

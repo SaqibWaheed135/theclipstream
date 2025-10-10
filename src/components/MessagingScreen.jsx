@@ -38,7 +38,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const mediaRecorderRef = useRef(null);
   const recordingIntervalRef = useRef(null);
 
-  const API_BASE_URL = 'https://api.theclipstream.com/api';
+  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
   const API_CONFIG = useMemo(() => ({
     baseUrl: API_BASE_URL,
@@ -77,7 +77,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       return;
     }
 
-    socketRef.current = io('https://api.theclipstream.com', {
+    socketRef.current = io('https://theclipstream-backend.onrender.com', {
       withCredentials: true,
       auth: { token }
     });

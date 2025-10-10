@@ -32,7 +32,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
   const [savedVideos, setSavedVideos] = useState([]);
 
   // Get API base URL
-  const API_BASE_URL = 'https://api.theclipstream.com/api';
+  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
 
   // Helper function to get auth headers
   const getAuthHeaders = () => {

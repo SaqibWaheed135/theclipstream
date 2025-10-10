@@ -55,7 +55,7 @@ export default function Signup() {
     }
 
     try {
-      const res = await axios.post("https://api.theclipstream.com/api/auth/signup", { 
+      const res = await axios.post("https://theclipstream-backend.onrender.com/api/auth/signup", { 
         username, 
         email, 
         password 
