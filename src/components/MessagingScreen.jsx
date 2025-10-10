@@ -893,42 +893,54 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
     }
   };
 
-  const sendMessage = async (e) => {
-    e?.preventDefault();
-    const content = newMessage.trim();
-    if (!content || sending) return;
+ const sendMessage = async (e) => {
+  e?.preventDefault();
+  const content = newMessage.trim();
+  if (!content || sending) return;
 
-    setSending(true);
-    setNewMessage('');
+  setSending(true);
+  setNewMessage('');
 
-    try {
-      if (selectedGroup) {
-        if (socketRef.current) {
-          socketRef.current.emit('send-group-message', {
-            groupId: selectedGroup._id,
-            content,
-            type: 'text'
-          });
-        }
-      } else if (selectedConversation) {
-        const response = await fetch(`${API_BASE_URL}/messages/conversations/${selectedConversation._id}/messages`, {
+  try {
+    if (selectedGroup) {
+      // --- GROUP MESSAGE (Socket) ---
+      if (socketRef.current && selectedGroup._id) {
+        socketRef.current.emit('send-group-message', {
+          groupId: selectedGroup._id,
+          content,
+          type: 'text'
+        });
+      } else {
+        console.warn('Socket not connected or group not selected');
+      }
+    } 
+    else if (selectedConversation) {
+      // --- PRIVATE MESSAGE (REST API) ---
+      const response = await fetch(
+        `${API_BASE_URL}/messages/conversations/${selectedConversation._id}/messages`,
+        {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ content, type: 'text' })
-        });
-
-        if (response.ok) {
-          const message = await response.json();
-          setMessages(prev => [...prev, message]);
         }
+      );
+
+      if (response.ok) {
+        const message = await response.json();
+        setMessages(prev => [...prev, message]);
+      } else {
+        const error = await response.json();
+        console.error('Message send failed:', error.msg || error);
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setNewMessage(content);
-    } finally {
-      setSending(false);
     }
-  };
+  } catch (error) {
+    console.error('Error sending message:', error);
+    setNewMessage(content); // Restore unsent message
+  } finally {
+    setSending(false);
+  }
+};
+
 
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
