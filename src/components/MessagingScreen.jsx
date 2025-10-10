@@ -48,9 +48,8 @@ const GroupList = ({ groups, selectedGroup, onSelectGroup, onCreateGroup, search
               <button
                 key={group._id}
                 onClick={() => onSelectGroup(group)}
-                className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${
-                  selectedGroup?._id === group._id ? 'bg-gray-800' : ''
-                }`}
+                className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${selectedGroup?._id === group._id ? 'bg-gray-800' : ''
+                  }`}
               >
                 <div className="flex items-center space-x-3">
                   <div className="relative">
@@ -151,9 +150,8 @@ const CreateGroupModal = ({ show, onClose, onCreateGroup }) => {
               <button
                 type="button"
                 onClick={() => setType('private')}
-                className={`w-full p-3 text-left border rounded-lg transition-colors ${
-                  type === 'private' ? 'border-pink-500 bg-pink-900/20' : 'border-gray-700 hover:border-gray-600'
-                }`}
+                className={`w-full p-3 text-left border rounded-lg transition-colors ${type === 'private' ? 'border-pink-500 bg-pink-900/20' : 'border-gray-700 hover:border-gray-600'
+                  }`}
               >
                 <div className="flex items-center">
                   <Lock className="w-5 h-5 mr-3" />
@@ -166,9 +164,8 @@ const CreateGroupModal = ({ show, onClose, onCreateGroup }) => {
               <button
                 type="button"
                 onClick={() => setType('public')}
-                className={`w-full p-3 text-left border rounded-lg transition-colors ${
-                  type === 'public' ? 'border-pink-500 bg-pink-900/20' : 'border-gray-700 hover:border-gray-600'
-                }`}
+                className={`w-full p-3 text-left border rounded-lg transition-colors ${type === 'public' ? 'border-pink-500 bg-pink-900/20' : 'border-gray-700 hover:border-gray-600'
+                  }`}
               >
                 <div className="flex items-center">
                   <Globe className="w-5 h-5 mr-3" />
@@ -208,6 +205,8 @@ const GroupInfoModal = ({ show, group, currentUserId, onClose, onUpdateGroup, on
   const [showSettings, setShowSettings] = useState(false);
   const [showMembers, setShowMembers] = useState(true);
   const [inviteCodeCopied, setInviteCodeCopied] = useState(false);
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+
 
   if (!show || !group) return null;
 
@@ -220,6 +219,10 @@ const GroupInfoModal = ({ show, group, currentUserId, onClose, onUpdateGroup, on
       setInviteCodeCopied(true);
       setTimeout(() => setInviteCodeCopied(false), 2000);
     }
+  };
+  const handleAddMembers = async (memberIds) => {
+    await onAddMembers(memberIds);
+    setShowAddMembersModal(false);
   };
 
   return (
@@ -396,6 +399,240 @@ const GroupInfoModal = ({ show, group, currentUserId, onClose, onUpdateGroup, on
     </div>
   );
 };
+
+// Add Members Modal
+const AddMembersModal = ({ show, groupId, onClose, onAddMembers }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      ...(token && { 'Authorization': `Bearer ${token}` }),
+      'Content-Type': 'application/json'
+    };
+  };
+
+  const searchUsers = async (query) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/search?query=${encodeURIComponent(query)}`, {
+        headers: getAuthHeaders()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSearchResults(data.users || []);
+      }
+    } catch (error) {
+      console.error('Error searching users:', error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    searchUsers(query);
+  };
+
+  const toggleUserSelection = (user) => {
+    setSelectedUsers(prev => {
+      const isSelected = prev.some(u => u._id === user._id);
+      if (isSelected) {
+        return prev.filter(u => u._id !== user._id);
+      } else {
+        return [...prev, user];
+      }
+    });
+  };
+
+  const handleAddMembers = async () => {
+    if (selectedUsers.length === 0) return;
+
+    setAdding(true);
+    await onAddMembers(selectedUsers.map(u => u._id));
+    setAdding(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSelectedUsers([]);
+  };
+
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-gray-900 rounded-lg p-6 w-full max-w-md mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Add Members</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder="Search users..."
+              className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 text-white"
+            />
+          </div>
+
+          {selectedUsers.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {selectedUsers.map(user => (
+                <div key={user._id} className="flex items-center space-x-2 bg-pink-600 px-3 py-1 rounded-full">
+                  <span className="text-sm">{user.username}</span>
+                  <button onClick={() => toggleUserSelection(user)} className="hover:bg-pink-700 rounded-full">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="max-h-64 overflow-y-auto space-y-2">
+            {searching ? (
+              <div className="text-center py-4 text-gray-400">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-500 mx-auto"></div>
+              </div>
+            ) : searchResults.length === 0 && searchQuery ? (
+              <div className="text-center py-4 text-gray-400">No users found</div>
+            ) : (
+              searchResults.map(user => (
+                <button
+                  key={user._id}
+                  onClick={() => toggleUserSelection(user)}
+                  className={`w-full p-3 text-left rounded-lg transition-colors ${selectedUsers.some(u => u._id === user._id)
+                      ? 'bg-pink-900/20 border border-pink-500'
+                      : 'hover:bg-gray-800 border border-transparent'
+                    }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <img
+                      src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=random&color=fff&size=200&bold=true`}
+                      alt={user.username}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                    <div>
+                      <p className="font-medium">{user.username}</p>
+                      {user.fullName && <p className="text-sm text-gray-400">{user.fullName}</p>}
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddMembers}
+              disabled={selectedUsers.length === 0 || adding}
+              className="px-6 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              {adding ? 'Adding...' : `Add ${selectedUsers.length} Member${selectedUsers.length !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+
+        <AddMembersModal
+          show={showAddMembersModal}
+          groupId={group._id}
+          onClose={() => setShowAddMembersModal(false)}
+          onAddMembers={handleAddMembers}
+        />
+      </div>
+    </div>
+  );
+};
+
+
+
+const JoinGroupModal = ({ show, onClose, onJoinGroup }) => {
+  const [inviteCode, setInviteCode] = useState('');
+  const [joining, setJoining] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!inviteCode.trim()) return;
+
+    setJoining(true);
+    await onJoinGroup(inviteCode.trim());
+    setJoining(false);
+    setInviteCode('');
+  };
+
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-gray-900 rounded-lg p-6 w-full max-w-md mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Join Group</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Invite Code</label>
+            <input
+              type="text"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              placeholder="Enter invite code"
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 text-white font-mono"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-2">
+              Ask the group admin for the invite code
+            </p>
+          </div>
+
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!inviteCode.trim() || joining}
+              className="px-6 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              {joining ? 'Joining...' : 'Join Group'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+
 
 // Main Messaging Screen Component
 const MessagingScreen = ({ conversationId: propConversationId }) => {
@@ -809,9 +1046,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       )}
       {!isOwn && !showAvatar && <div className="w-8" />}
 
-      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
-        isOwn ? 'bg-pink-600 text-white' : 'bg-gray-800 text-white'
-      }`}>
+      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${isOwn ? 'bg-pink-600 text-white' : 'bg-gray-800 text-white'
+        }`}>
         {!isOwn && selectedGroup && showAvatar && (
           <p className="text-xs text-pink-300 font-semibold mb-1">{message.sender.username}</p>
         )}
@@ -839,25 +1075,22 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   return (
     <div className="min-h-screen bg-black text-white flex">
       {/* Sidebar */}
-      <div className={`w-full md:w-1/3 border-r border-gray-800 flex flex-col ${
-        selectedConversation || selectedGroup ? 'hidden md:flex' : 'flex'
-      }`}>
+      <div className={`w-full md:w-1/3 border-r border-gray-800 flex flex-col ${selectedConversation || selectedGroup ? 'hidden md:flex' : 'flex'
+        }`}>
         {/* Tabs */}
         <div className="p-4 border-b border-gray-800">
           <div className="flex space-x-2 mb-4">
             <button
               onClick={() => setActiveTab('dm')}
-              className={`flex-1 py-2 px-4 rounded-lg transition-colors ${
-                activeTab === 'dm' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
+              className={`flex-1 py-2 px-4 rounded-lg transition-colors ${activeTab === 'dm' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}
             >
               Direct Messages
             </button>
             <button
               onClick={() => setActiveTab('groups')}
-              className={`flex-1 py-2 px-4 rounded-lg transition-colors ${
-                activeTab === 'groups' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
+              className={`flex-1 py-2 px-4 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}
             >
               Groups
             </button>
@@ -900,9 +1133,8 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
                       <button
                         key={conversation._id}
                         onClick={() => selectConversation(conversation)}
-                        className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${
-                          selectedConversation?._id === conversation._id ? 'bg-gray-800' : ''
-                        }`}
+                        className={`w-full p-4 text-left hover:bg-gray-900 transition-colors ${selectedConversation?._id === conversation._id ? 'bg-gray-800' : ''
+                          }`}
                       >
                         <div className="flex items-center space-x-3">
                           <img
