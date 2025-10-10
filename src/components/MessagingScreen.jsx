@@ -673,28 +673,29 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const typingTimeoutRef = useRef(null);
 
   const API_BASE_URL = 'https://theclipstream-backend.onrender.com/api';
-  const joinGroup = async (inviteCode) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/groups/join`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ inviteCode })
-      });
+ const joinGroup = async (inviteCode) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/groups/join-by-code`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ inviteCode })
+    });
 
-      if (response.ok) {
-        const joinedGroup = await response.json();
-        setGroups(prev => [joinedGroup, ...prev]);
-        setShowJoinGroupModal(false);
-        selectGroup(joinedGroup);
-      } else {
-        const error = await response.json();
-        alert(error.msg || 'Failed to join group');
-      }
-    } catch (error) {
-      console.error('Error joining group:', error);
-      alert('Error joining group');
+    if (response.ok) {
+      const joinedGroup = await response.json();
+      setGroups(prev => [joinedGroup, ...prev]);
+      setShowJoinGroupModal(false);
+      selectGroup(joinedGroup);
+    } else {
+      const error = await response.json();
+      alert(error.msg || 'Failed to join group');
     }
-  };
+  } catch (error) {
+    console.error('Error joining group:', error);
+    alert('Error joining group');
+  }
+};
+
 
 
   const getAuthHeaders = () => {
