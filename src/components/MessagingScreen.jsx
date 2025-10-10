@@ -1129,7 +1129,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
               className={`flex-1 py-2 px-4 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                 }`}
             >
-              Groups
+              Group
             </button>
           </div>
         </div>
