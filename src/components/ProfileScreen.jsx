@@ -11,6 +11,8 @@ const ProfileScreen = ({ userId: propUserId }) => {
   const [followLoading, setFollowLoading] = useState(false);
   const [pointsLoading, setPointsLoading] = useState(false);
   const [userPoints, setUserPoints] = useState(0);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+
 
   // Follow system states
   const [followStatus, setFollowStatus] = useState({
@@ -780,7 +782,7 @@ const ProfileScreen = ({ userId: propUserId }) => {
       `}</style>
 
       {/* Header */}
-      <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
+      {/* <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <h1 className="text-xl font-bold">{user.username}</h1>
@@ -812,6 +814,75 @@ const ProfileScreen = ({ userId: propUserId }) => {
               <button
                 onClick={() => window.location.href = '/recharge-points'}
                 className="py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors"
+              >
+                Recharge Points
+              </button>
+            )}
+          </div>
+        </div>
+      </div> */}
+
+      <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <h1 className="text-xl font-bold">{user.username}</h1>
+            {user.isVerified && (
+              <Shield className="w-5 h-5 text-blue-500" />
+            )}
+            {user.isPrivate && (
+              <div className="bg-gray-700 px-2 py-1 rounded-full">
+                <span className="text-xs">Private</span>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center space-x-2">
+            {isOwnProfile && followRequests.length > 0 && (
+              <button
+                onClick={() => setShowFollowRequests(true)}
+                className="relative p-2 hover:bg-gray-800 rounded-full transition-colors"
+              >
+                <UserPlus className="w-5 h-5" />
+                <div className="absolute -top-1 -right-1 bg-red-500 text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {followRequests.length}
+                </div>
+              </button>
+            )}
+
+            {/* Invite Button - Only shown on own profile */}
+            {isOwnProfile && (
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span className="text-sm font-medium hidden sm:inline">Invite & Earn</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                const inviteCode = user?.inviteCode || user?._id;
+                const inviteLink = `${window.location.origin}/signup?ref=${inviteCode}`;
+                if (navigator.share) {
+                  navigator.share({
+                    title: 'Join ClipStream',
+                    text: `Join me on ClipStream!`,
+                    url: inviteLink
+                  });
+                } else {
+                  navigator.clipboard.writeText(inviteLink);
+                  alert('Link copied!');
+                }
+              }}
+              className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+            >
+              <Share className="w-5 h-5" />
+            </button>
+
+            {isOwnProfile && (
+              <button
+                onClick={() => window.location.href = '/recharge-points'}
+                className="py-2 px-4 rounded-lg font-medium bg-gray-800 text-white border border-gray-600 hover:bg-gray-700 transition-colors hidden sm:block"
               >
                 Recharge Points
               </button>

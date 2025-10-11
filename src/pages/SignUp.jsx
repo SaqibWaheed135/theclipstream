@@ -28,6 +28,14 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
+  // In your Signup component, capture the ref parameter
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const ref = urlParams.get('ref');
+    if (ref) {
+      sessionStorage.setItem('referralCode', ref);
+    }
+  }, []);
 
   // Handle manual signup
   const handleSignup = async (e) => {
@@ -55,11 +63,17 @@ export default function Signup() {
     }
 
     try {
-      const res = await axios.post("https://theclipstream-backend.onrender.com/api/auth/signup", { 
-        username, 
-        email, 
-        password 
+      const referralCode = sessionStorage.getItem('referralCode');
+
+      const res = await axios.post("https://theclipstream-backend.onrender.com/api/auth/signup", {
+        username,
+        email,
+        password,
+        referralCode // Include referral code
+
       });
+      sessionStorage.removeItem('referralCode'); // Clean up
+
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       navigate("/");
@@ -74,7 +88,7 @@ export default function Signup() {
   const handleGoogleResponse = async (response) => {
     setGoogleLoading(true);
     setError("");
-    
+
     try {
       const idToken = response.credential;
       const res = await axios.post("https://theclipstream-backend.onrender.com/api/auth/google", { idToken });
@@ -87,6 +101,8 @@ export default function Signup() {
     } finally {
       setGoogleLoading(false);
     }
+
+
   };
 
   // Initialize Google Sign-In
@@ -99,7 +115,7 @@ export default function Signup() {
 
       try {
         await loadGoogleScript();
-        
+
         if (window.google && window.google.accounts) {
           window.google.accounts.id.initialize({
             client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
@@ -108,11 +124,11 @@ export default function Signup() {
             cancel_on_tap_outside: true,
             use_fedcm_for_prompt: false
           });
-          
+
           const googleButtonDiv = document.getElementById("googleSignInDiv");
           if (googleButtonDiv) {
             googleButtonDiv.innerHTML = '';
-            
+
             window.google.accounts.id.renderButton(googleButtonDiv, {
               theme: "outline",
               size: "large",
@@ -149,11 +165,11 @@ export default function Signup() {
           <div className="mb-8">
             <img src={logo} alt="ClipStream Logo" className="w-40 h-40 rounded-2xl shadow-2xl" />
           </div>
-          
+
           <p className="text-xl text-center text-pink-100 max-w-md leading-relaxed">
             Join us! Create an account to start your creative journey with our powerful video editing platform.
           </p>
-          
+
           {/* Decorative elements */}
           <div className="absolute top-10 left-10 w-32 h-32 bg-white bg-opacity-10 rounded-full blur-xl"></div>
           <div className="absolute bottom-10 right-10 w-40 h-40 bg-white bg-opacity-5 rounded-full blur-2xl"></div>
@@ -181,8 +197,8 @@ export default function Signup() {
 
           {/* Google Sign-Up Button */}
           <div className="mb-6">
-            <div 
-              id="googleSignInDiv" 
+            <div
+              id="googleSignInDiv"
               className={`${googleLoading ? 'opacity-50 pointer-events-none' : ''}`}
             ></div>
             {googleLoading && (
@@ -209,72 +225,72 @@ export default function Signup() {
               <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-1">
                 Username
               </label>
-              <input 
+              <input
                 id="username"
-                type="text" 
+                type="text"
                 placeholder="Enter your username"
                 className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
-                value={username} 
-                onChange={(e) => setUsername(e.target.value)} 
-                required 
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
                 disabled={loading}
                 minLength={3}
                 maxLength={30}
               />
             </div>
-            
+
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
                 Email address
               </label>
-              <input 
+              <input
                 id="email"
-                type="email" 
+                type="email"
                 placeholder="Enter your email"
                 className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                required 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
                 disabled={loading}
               />
             </div>
-            
+
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
                 Password
               </label>
-              <input 
+              <input
                 id="password"
-                type="password" 
+                type="password"
                 placeholder="Enter your password"
                 className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                required 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
                 disabled={loading}
                 minLength={6}
               />
             </div>
-            
+
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-1">
                 Confirm Password
               </label>
-              <input 
+              <input
                 id="confirmPassword"
-                type="password" 
+                type="password"
                 placeholder="Confirm your password"
                 className="w-full p-3 rounded-lg border border-gray-600 bg-gray-800 text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors"
-                value={confirmPassword} 
-                onChange={(e) => setConfirmPassword(e.target.value)} 
-                required 
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
                 disabled={loading}
                 minLength={6}
               />
             </div>
-            
-            <button 
-              type="submit" 
+
+            <button
+              type="submit"
               className="w-full bg-pink-600 hover:bg-pink-700 text-white py-3 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl"
               disabled={loading}
             >
