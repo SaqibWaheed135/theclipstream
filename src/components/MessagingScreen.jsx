@@ -432,6 +432,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [groupMessages, setGroupMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -582,6 +583,35 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       if (conversation) selectConversation(conversation);
     }
   }, [propConversationId, conversations]);
+  useEffect(() => {
+  if (!socketRef.current) return;
+
+  // ✅ Listen for private messages
+  socketRef.current.on('new-message', ({ message, conversation }) => {
+    if (selectedConversation && conversation._id === selectedConversation._id) {
+      setMessages(prev => [...prev, message]);
+    }
+  });
+
+  // ✅ Listen for group messages
+  socketRef.current.on('new-group-message', ({ message, groupId }) => {
+    if (selectedGroup && selectedGroup._id === groupId) {
+      setMessages(prev => [...prev, message]); // Only update when in the same group
+    }
+  });
+
+  // Cleanup on unmount
+  return () => {
+    socketRef.current.off('new-message');
+    socketRef.current.off('new-group-message');
+  };
+}, [selectedConversation, selectedGroup]);
+
+useEffect(() => {
+  if (selectedConversation || selectedGroup) {
+    setMessages([]); // Clear previous messages
+  }
+}, [selectedConversation, selectedGroup]);
 
   useEffect(() => {
     scrollToBottom();
@@ -875,7 +905,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   };
 
   const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files).filter(file => 
+    const files = Array.from(e.target.files).filter(file =>
       file.type.startsWith('image/') || file.type.startsWith('video/')
     );
     if (files.length > 0) {
@@ -888,7 +918,7 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const handleDrop = (e) => {
     e.preventDefault();
     setDragActive(false);
-    const files = Array.from(e.dataTransfer.files).filter(file => 
+    const files = Array.from(e.dataTransfer.files).filter(file =>
       file.type.startsWith('image/') || file.type.startsWith('video/')
     );
     if (files.length > 0) {
