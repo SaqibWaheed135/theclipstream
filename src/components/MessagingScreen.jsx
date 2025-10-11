@@ -432,7 +432,6 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [groupMessages, setGroupMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -504,13 +503,19 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     socketRef.current.on('new-message', (data) => {
       const { message, conversation } = data;
-      if (selectedConversation && message.conversation === selectedConversation._id) {
-        setMessages(prev => [...prev, message]);
-        if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
-          fetchSignedUrl(message._id, message.key);
+      setMessages(prev => {
+        const newMessages = [...prev];
+        if (!newMessages.some(m => m._id === message._id) &&
+            ((selectedConversation && message.conversation === selectedConversation._id) ||
+             (selectedGroup && message.conversation === selectedGroup.conversation._id))) {
+          newMessages.push(message);
         }
-        scrollToBottom();
+        return newMessages;
+      });
+      if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
+        fetchSignedUrl(message._id, message.key);
       }
+      scrollToBottom();
       setConversations(prev => prev.map(conv =>
         conv._id === conversation._id ? { ...conv, lastMessage: message, updatedAt: new Date() } : conv
       ));
@@ -518,13 +523,17 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
 
     socketRef.current.on('new-group-message', (data) => {
       const { message, groupId } = data;
-      if (selectedGroup && selectedGroup._id === groupId) {
-        setMessages(prev => [...prev, message]);
-        if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
-          fetchSignedUrl(message._id, message.key);
+      setMessages(prev => {
+        const newMessages = [...prev];
+        if (selectedGroup && selectedGroup._id === groupId && !newMessages.some(m => m._id === message._id)) {
+          newMessages.push(message);
         }
-        scrollToBottom();
+        return newMessages;
+      });
+      if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
+        fetchSignedUrl(message._id, message.key);
       }
+      scrollToBottom();
     });
 
     socketRef.current.on('user-typing', (data) => {
@@ -583,35 +592,12 @@ const MessagingScreen = ({ conversationId: propConversationId }) => {
       if (conversation) selectConversation(conversation);
     }
   }, [propConversationId, conversations]);
+
   useEffect(() => {
-  if (!socketRef.current) return;
-
-  // ✅ Listen for private messages
-  socketRef.current.on('new-message', ({ message, conversation }) => {
-    if (selectedConversation && conversation._id === selectedConversation._id) {
-      setMessages(prev => [...prev, message]);
+    if (selectedConversation || selectedGroup) {
+      setMessages([]); // Clear previous messages
     }
-  });
-
-  // ✅ Listen for group messages
-  socketRef.current.on('new-group-message', ({ message, groupId }) => {
-    if (selectedGroup && selectedGroup._id === groupId) {
-      setMessages(prev => [...prev, message]); // Only update when in the same group
-    }
-  });
-
-  // Cleanup on unmount
-  return () => {
-    socketRef.current.off('new-message');
-    socketRef.current.off('new-group-message');
-  };
-}, [selectedConversation, selectedGroup]);
-
-useEffect(() => {
-  if (selectedConversation || selectedGroup) {
-    setMessages([]); // Clear previous messages
-  }
-}, [selectedConversation, selectedGroup]);
+  }, [selectedConversation, selectedGroup]);
 
   useEffect(() => {
     scrollToBottom();
@@ -664,9 +650,9 @@ useEffect(() => {
 
   const selectConversation = async (conversation) => {
     if (!conversation?._id) {
-    console.error("Conversation has no ID:", conversation);
-    return;
-  }
+      console.error("Conversation has no ID:", conversation);
+      return;
+    }
     setSelectedConversation(conversation);
     setSelectedGroup(null);
     setMessages([]);
@@ -674,7 +660,7 @@ useEffect(() => {
       socketRef.current.emit('join-conversation', { conversationId: conversation._id });
     }
     try {
-      const response = await fetch(`${API_BASE_URL}/messages/conversations/${conversation._id}/messages`, {
+      const response = await fetch(`${API_CONFIG.baseUrl}/messages/conversations/${conversation._id}/messages`, {
         headers: getAuthHeaders()
       });
       if (response.ok) {
@@ -687,6 +673,7 @@ useEffect(() => {
   };
 
   const selectGroup = async (group) => {
+    console.log('Selecting group:', group._id, 'Conversation ID:', group.conversation?._id);
     setSelectedGroup(group);
     setSelectedConversation(null);
     setMessages([]);
@@ -699,13 +686,14 @@ useEffect(() => {
       });
       if (response.ok) {
         const msgs = await response.json();
+        console.log('Loaded group messages:', msgs.length);
         setMessages(msgs);
       }
     } catch (error) {
       console.error('Error fetching group messages:', error);
     }
   };
-
+  
   const createGroup = async (groupData) => {
     try {
       const response = await fetch(`${API_CONFIG.baseUrl}/groups/create`, {
@@ -765,34 +753,28 @@ useEffect(() => {
     if (!messageData) setNewMessage('');
 
     try {
-      if (selectedGroup) {
-        if (socketRef.current && selectedGroup._id) {
-          socketRef.current.emit('send-group-message', {
-            groupId: selectedGroup._id,
-            content,
-            type,
-            key,
-            fileType,
-            fileName
-          });
-        }
-      } else if (selectedConversation) {
-        const response = await fetch(`${API_CONFIG.baseUrl}/messages/conversations/${selectedConversation._id}/messages`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ content, type, key, fileType, fileName })
-        });
-        if (response.ok) {
-          const message = await response.json();
-          setMessages(prev => [...prev, message]);
-          if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
-            fetchSignedUrl(message._id, message.key);
+      const conversationId = selectedGroup ? selectedGroup.conversation._id : selectedConversation._id;
+      const response = await fetch(`${API_CONFIG.baseUrl}/messages/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ content, type, key, fileType, fileName })
+      });
+      if (response.ok) {
+        const message = await response.json();
+        setMessages(prev => {
+          const newMessages = [...prev];
+          if (!newMessages.some(m => m._id === message._id)) {
+            newMessages.push(message);
           }
-        } else {
-          if (!messageData) setNewMessage(content);
-          const error = await response.json();
-          alert(error.msg || 'Failed to send message');
+          return newMessages;
+        });
+        if (message.key && ['image', 'video', 'audio'].includes(message.type)) {
+          fetchSignedUrl(message._id, message.key);
         }
+      } else {
+        if (!messageData) setNewMessage(content);
+        const error = await response.json();
+        alert(error.msg || 'Failed to send message');
       }
     } catch (error) {
       console.error('Error sending message:', error);
