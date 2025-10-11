@@ -163,7 +163,7 @@ export default function Signup() {
         <div className="relative z-10 flex flex-col justify-center items-center text-white p-12">
           {/* Logo from assets */}
           <div className="mb-8">
-            <img src={logo} alt="ClipStream Logo" className="w-40 h-40 rounded-2xl shadow-2xl" />
+            <img src={logo} alt="ClipStream Logo" className="w-55 h-40 rounded-2xl shadow-2xl" />
           </div>
 
           <p className="text-xl text-center text-pink-100 max-w-md leading-relaxed">
