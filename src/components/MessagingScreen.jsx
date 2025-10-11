@@ -663,6 +663,10 @@ useEffect(() => {
   };
 
   const selectConversation = async (conversation) => {
+    if (!conversation?._id) {
+    console.error("Conversation has no ID:", conversation);
+    return;
+  }
     setSelectedConversation(conversation);
     setSelectedGroup(null);
     setMessages([]);
@@ -670,7 +674,7 @@ useEffect(() => {
       socketRef.current.emit('join-conversation', { conversationId: conversation._id });
     }
     try {
-      const response = await fetch(`${API_CONFIG.baseUrl}/messages/conversations/${conversation._id}/messages`, {
+      const response = await fetch(`${API_BASE_URL}/messages/conversations/${conversation._id}/messages`, {
         headers: getAuthHeaders()
       });
       if (response.ok) {
