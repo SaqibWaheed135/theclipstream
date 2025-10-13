@@ -526,67 +526,20 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
       await room.connect(roomUrl, viewerToken);
       setLiveKitRoom(room);
       console.log('✅ Connected to LiveKit room');
+      console.log('Remote participants:', room.remoteParticipants.size);
 
-      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        console.log('📹 Track subscribed:', track.kind, 'from', participant.identity);
-
-        if (track.kind === Track.Kind.Video) {
-          setTimeout(() => {
-            const videoEl = document.querySelector(`video[data-participant="${participant.identity}"]`);
-            if (videoEl) {
-              track.attach(videoEl);
-              videoEl.muted = true;
-              videoEl.volume = 0;
-              videoEl.play().catch(err => console.warn('Video autoplay failed:', err));
-              console.log('✅ Video attached for', participant.identity);
-            }
-          }, 100);
-        }
-
-        if (track.kind === Track.Kind.Audio) {
-          console.log('🎵 Audio track received from', participant.identity);
-          
-          const existingAudio = document.querySelector(`audio[data-participant="${participant.identity}"]`);
-          if (existingAudio) {
-            existingAudio.remove();
+      // Handle existing participants (host might already be streaming)
+      room.remoteParticipants.forEach((participant) => {
+        console.log('Found existing participant:', participant.identity);
+        participant.trackPublications.forEach((publication) => {
+          if (publication.isSubscribed && publication.track) {
+            handleTrackSubscribed(publication.track, publication, participant);
           }
-
-          const audioEl = document.createElement('audio');
-          audioEl.autoplay = true;
-          audioEl.playsInline = true;
-          audioEl.muted = false;
-          audioEl.volume = 1.0;
-          audioEl.dataset.participant = participant.identity;
-
-          track.attach(audioEl);
-          document.body.appendChild(audioEl);
-
-          audioEl.play()
-            .then(() => {
-              console.log('✅ Audio playing for', participant.identity);
-              setAudioEnabled(true);
-            })
-            .catch((err) => {
-              console.error('❌ Audio autoplay failed:', err);
-              setError('👆 Click anywhere to enable audio');
-              
-              const playOnInteraction = () => {
-                audioEl.play()
-                  .then(() => {
-                    console.log('✅ Audio started after user interaction');
-                    setError('');
-                    setAudioEnabled(true);
-                    document.removeEventListener('click', playOnInteraction);
-                    document.removeEventListener('touchstart', playOnInteraction);
-                  })
-                  .catch(console.error);
-              };
-              
-              document.addEventListener('click', playOnInteraction, { once: true });
-              document.addEventListener('touchstart', playOnInteraction, { once: true });
-            });
-        }
+        });
       });
+
+      // Handle video tracks
+      room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
 
       room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
         if (track.kind === Track.Kind.Audio) {
@@ -606,6 +559,82 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
     } catch (err) {
       console.error('LiveKit connection error:', err);
       setError('Failed to connect: ' + err.message);
+    }
+  };
+
+  const handleTrackSubscribed = (track, publication, participant) => {
+    console.log('📹 Track subscribed:', track.kind, 'from', participant.identity);
+
+    if (track.kind === Track.Kind.Video) {
+      // Give React time to render the video element
+      setTimeout(() => {
+        const videoEl = document.querySelector(`video[data-participant="${participant.identity}"]`);
+        if (videoEl) {
+          console.log('Attaching video track to element');
+          track.attach(videoEl);
+          videoEl.muted = true;
+          videoEl.volume = 0;
+          videoEl.play()
+            .then(() => console.log('✅ Video playing for', participant.identity))
+            .catch(err => console.warn('Video autoplay failed:', err));
+        } else {
+          console.error('❌ Video element not found for', participant.identity);
+        }
+      }, 200);
+    }
+
+    if (track.kind === Track.Kind.Audio) {
+      console.log('🎵 Audio track received from', participant.identity);
+      
+      const existingAudio = document.querySelector(`audio[data-participant="${participant.identity}"]`);
+      if (existingAudio) {
+        console.log('Removing existing audio element');
+        existingAudio.remove();
+      }
+
+      const audioEl = document.createElement('audio');
+      audioEl.autoplay = true;
+      audioEl.playsInline = true;
+      audioEl.muted = false;
+      audioEl.volume = 1.0;
+      audioEl.dataset.participant = participant.identity;
+
+      console.log('Attaching audio track');
+      track.attach(audioEl);
+      document.body.appendChild(audioEl);
+
+      console.log('Audio element created:', {
+        muted: audioEl.muted,
+        volume: audioEl.volume,
+        autoplay: audioEl.autoplay,
+        srcObject: audioEl.srcObject
+      });
+
+      audioEl.play()
+        .then(() => {
+          console.log('✅ Audio playing for', participant.identity);
+          setAudioEnabled(true);
+        })
+        .catch((err) => {
+          console.error('❌ Audio autoplay failed:', err.name, err.message);
+          setError('👆 Click anywhere to enable audio');
+          
+          const playOnInteraction = () => {
+            console.log('User clicked, attempting audio play...');
+            audioEl.play()
+              .then(() => {
+                console.log('✅ Audio started after user interaction');
+                setError('');
+                setAudioEnabled(true);
+                document.removeEventListener('click', playOnInteraction);
+                document.removeEventListener('touchstart', playOnInteraction);
+              })
+              .catch(e => console.error('Audio play failed after click:', e));
+          };
+          
+          document.addEventListener('click', playOnInteraction, { once: true });
+          document.addEventListener('touchstart', playOnInteraction, { once: true });
+        });
     }
   };
 
@@ -693,6 +722,11 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
               {audioEnabled && (
                 <div className="flex items-center gap-2 text-green-400 text-xs">
                   <span>🔊 Audio enabled</span>
+                </div>
+              )}
+              {participants.length > 0 && (
+                <div className="flex items-center gap-2 text-blue-400 text-xs">
+                  <span>📹 {participants.length} streaming</span>
                 </div>
               )}
             </div>
