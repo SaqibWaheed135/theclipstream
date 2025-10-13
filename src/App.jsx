@@ -28,6 +28,8 @@ import PointsRechargeScreen from "./components/PointsRechargeScreen.jsx";
 import NotificationsScreen from "./components/NotificationsScreen.jsx";
 import FollowRequestsScreen from "./components/FollowRequestScreen.jsx";
 import PointsWithdrawalScreen from "./components/PointsWithdrawalScreen.jsx";
+import HostLiveStream from "./components/LiveStream.jsx";
+import ViewerLiveStream from "./components/LiveStream.jsx"
 
 // --------------------
 // Bottom Navigation
@@ -53,9 +55,8 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
             <button
               key={item.id}
               onClick={() => navigate(item.path)}
-              className={`flex-1 py-2 px-1 flex flex-col items-center justify-center min-h-[60px] ${
-                isUpload ? "relative" : ""
-              }`}
+              className={`flex-1 py-2 px-1 flex flex-col items-center justify-center min-h-[60px] ${isUpload ? "relative" : ""
+                }`}
             >
               {isUpload ? (
                 <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center mb-1">
@@ -63,19 +64,17 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
                 </div>
               ) : (
                 <Icon
-                  className={`w-6 h-6 mb-1 ${
-                    isActive
+                  className={`w-6 h-6 mb-1 ${isActive
                       ? item.id === "live"
                         ? "text-red-500"
                         : "text-white"
                       : "text-gray-400"
-                  }`}
+                    }`}
                 />
               )}
               <span
-                className={`text-xs ${
-                  isActive && !isUpload ? "text-white" : "text-gray-400"
-                }`}
+                className={`text-xs ${isActive && !isUpload ? "text-white" : "text-gray-400"
+                  }`}
               >
                 {item.label}
               </span>
@@ -121,6 +120,16 @@ const App = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [currentScreen, setCurrentScreen] = useState(location.pathname);
+  const [mode, setMode] = useState('select'); // 'select', 'host', 'viewer'
+  const [streamId, setStreamId] = useState('');
+
+  if (mode === 'host') {
+    return <HostLiveStream />;
+  }
+
+  if (mode === 'viewer' && streamId) {
+    return <ViewerLiveStream streamId={streamId} />;
+  }
 
   // 👇 State for install prompt (Android)
   const [deferredPrompt, setDeferredPrompt] = useState(null);
