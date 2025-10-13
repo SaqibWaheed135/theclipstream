@@ -19,15 +19,16 @@ const LiveScreen = () => {
   const [cohostRequests, setCohostRequests] = useState([]);
   const [showRequestsModal, setShowRequestsModal] = useState(false);
   const [liveKitRoom, setLiveKitRoom] = useState(null);
+  // Add state for track publication status
+  const [cameraTrackReceived, setCameraTrackReceived] = useState(false);
+  const [micTrackReceived, setMicTrackReceived] = useState(false);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const socketRef = useRef(null);
   const localVideoRef = useRef(null);
   const commentsEndRef = useRef(null);
-  const audioRef = useRef(null);
 
-  // Use environment variable for LiveKit URL
   const LIVEKIT_URL = process.env.REACT_APP_LIVEKIT_URL || 'wss://theclipstream-q0jt88zr.livekit.cloud';
 
   // Initialize socket connection
@@ -106,20 +107,14 @@ const LiveScreen = () => {
 
   const getUserMedia = async () => {
     try {
-      // Stop existing stream first
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
 
-      // Mobile-optimized constraints
       const constraints = {
         video: {
-          width: isMobile() ?
-            { min: 320, ideal: 640, max: 1280 } :
-            { min: 320, ideal: 720, max: 1920 },
-          height: isMobile() ?
-            { min: 240, ideal: 1136, max: 1920 } :
-            { min: 240, ideal: 1280, max: 1080 },
+          width: isMobile() ? { min: 320, ideal: 640, max: 1280 } : { min: 320, ideal: 720, max: 1920 },
+          height: isMobile() ? { min: 240, ideal: 1136, max: 1920 } : { min: 240, ideal: 1280, max: 1080 },
           facingMode: 'user',
           frameRate: { ideal: 30, max: 30 }
         },
@@ -137,7 +132,6 @@ const LiveScreen = () => {
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.muted = true;
-
         try {
           await localVideoRef.current.play();
         } catch (playError) {
@@ -148,7 +142,6 @@ const LiveScreen = () => {
       return stream;
     } catch (error) {
       console.error('Error accessing media devices:', error);
-
       if (error.name === 'NotAllowedError') {
         alert('Camera and microphone access denied. Please allow permissions and try again.');
       } else if (error.name === 'NotFoundError') {
@@ -170,7 +163,6 @@ const LiveScreen = () => {
       } else {
         alert('Could not access camera/microphone: ' + error.message);
       }
-
       throw error;
     }
   };
@@ -192,146 +184,6 @@ const LiveScreen = () => {
     }
   };
 
-  //  const startLive = async () => {
-  //   if (!liveTitle.trim()) {
-  //     alert('Please enter a title for your live stream');
-  //     return;
-  //   }
-
-  //   try {
-  //     setConnectionStatus('connecting');
-  //     console.log('Starting live stream process...');
-
-  //     // Get fresh media stream for preview
-  //     console.log('Getting fresh user media...');
-  //     await getUserMedia();
-
-  //     if (!streamRef.current) {
-  //       throw new Error('Failed to get media stream');
-  //     }
-
-  //     const token = localStorage.getItem('token');
-  //     console.log('Creating live stream via API...');
-
-  //     const response = await fetch('https://theclipstream-backend.onrender.com/api/live/create', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //         ...(token && { Authorization: `Bearer ${token}` }),
-  //       },
-  //       credentials: 'include',
-  //       body: JSON.stringify({
-  //         title: liveTitle,
-  //         description: '',
-  //         privacy: 'public',
-  //       }),
-  //     });
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(`Failed to create live stream: ${errorData.msg || response.statusText}`);
-  //     }
-
-  //     const streamData = await response.json();
-  //     console.log('Stream data from backend:', streamData);
-
-  //     if (!streamData.publishToken || typeof streamData.publishToken !== 'string') {
-  //       throw new Error('Invalid publish token received from server');
-  //     }
-
-  //     if (!streamData.roomUrl || !streamData.roomUrl.startsWith('wss://')) {
-  //       throw new Error('Invalid room URL received from server');
-  //     }
-
-  //     setStreamId(streamData.streamId);
-  //     setCurrentStream(streamData.stream);
-
-  //     console.log('Connecting to LiveKit room...');
-  //     const room = new Room({
-  //       adaptiveStream: true,
-  //       dynacast: true,
-  //       videoCaptureDefaults: {
-  //         resolution: isMobile()
-  //           ? { width: 640, height: 1136, frameRate: 30 }
-  //           : { width: 720, height: 1280, frameRate: 30 },
-  //       },
-  //       audioCaptureDefaults: {
-  //         echoCancellation: true,
-  //         noiseSuppression: true,
-  //       },
-  //     });
-
-  //     try {
-  //       await room.connect(streamData.roomUrl, streamData.publishToken);
-  //       console.log('Connected to LiveKit room successfully');
-  //     } catch (liveKitError) {
-  //       console.error('LiveKit connection failed:', liveKitError);
-  //       throw new Error(`Failed to connect to LiveKit: ${liveKitError.message}`);
-  //     }
-
-  //     // Enable local camera and microphone
-  //     try {
-  //       await room.localParticipant.enableCameraAndMicrophone();
-  //       console.log('Tracks published using enableCameraAndMicrophone');
-  //     } catch (publishError) {
-  //       console.error('LiveKit publishing failed:', publishError);
-  //       throw new Error(`Failed to publish video/audio: ${publishError.message}`);
-  //     }
-
-  //     setLiveKitRoom(room);
-
-  //     // ✅ FIX: Use LiveKit event listener instead of timeout
-  //     room.on(RoomEvent.LocalTrackPublished, (publication) => {
-  //       if (publication.source === Track.Source.Camera && videoRef.current) {
-  //         console.log('Camera track published, setting video element...');
-  //         const localVideoTrack = publication.track;
-  //         if (localVideoTrack && localVideoTrack.mediaStreamTrack) {
-  //           const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
-  //           videoRef.current.srcObject = mediaStream;
-  //           videoRef.current.muted = false;
-  //           videoRef.current
-  //             .play()
-  //             .then(() => console.log('Main video playing successfully'))
-  //             .catch((err) => {
-  //               console.warn('Main video autoplay failed, retrying muted:', err);
-  //               videoRef.current.muted = true;
-  //               videoRef.current.play();
-  //             });
-
-  //           // Hide local preview after switching
-  //           if (localVideoRef.current) {
-  //             localVideoRef.current.style.display = 'none';
-  //           }
-  //         }
-  //       }
-  //     });
-
-  //     setIsStreaming(true);
-
-  //     // Join stream via socket
-  //     socketRef.current.emit('join-stream', {
-  //       streamId: streamData.streamId,
-  //       isStreamer: true,
-  //       title: liveTitle,
-  //     });
-
-  //     setIsLive(true);
-  //     setConnectionStatus('live');
-  //     console.log('Live stream started successfully!');
-  //   } catch (error) {
-  //     console.error('Error starting live stream:', error);
-  //     setConnectionStatus('error');
-  //     alert('Failed to start live stream: ' + error.message);
-
-  //     // Clean up on error
-  //     if (streamRef.current) {
-  //       streamRef.current.getTracks().forEach((track) => track.stop());
-  //     }
-  //     stopStream();
-  //   }
-  // };
-
-
   const startLive = async () => {
     if (!liveTitle.trim()) {
       alert('Please enter a title for your live stream');
@@ -342,10 +194,7 @@ const LiveScreen = () => {
       setConnectionStatus('connecting');
       console.log('Starting live stream process...');
 
-      // Get fresh media stream for preview
-      console.log('Getting fresh user media...');
       await getUserMedia();
-
       if (!streamRef.current) {
         throw new Error('Failed to get media stream');
       }
@@ -409,7 +258,6 @@ const LiveScreen = () => {
         throw new Error(`Failed to connect to LiveKit: ${liveKitError.message}`);
       }
 
-      // Enable local camera and microphone
       try {
         await room.localParticipant.enableCameraAndMicrophone();
         console.log('Tracks published using enableCameraAndMicrophone');
@@ -419,57 +267,6 @@ const LiveScreen = () => {
       }
 
       setLiveKitRoom(room);
-
-      let cameraTrackReceived = false;
-      let micTrackReceived = false;
-
-
-      // Listen for local track publications
-      // room.on(RoomEvent.LocalTrackPublished, (publication) => {
-      //   if (publication.source === Track.Source.Camera && videoRef.current) {
-      //     console.log('Camera track published, setting video element...');
-      //     const localVideoTrack = publication.track;
-      //     if (localVideoTrack && localVideoTrack.mediaStreamTrack) {
-      //       cameraTrackReceived = true;
-      //       const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
-      //       videoRef.current.srcObject = mediaStream;
-      //       videoRef.current.muted = false;
-      //       videoRef.current.play().catch((err) => {
-      //         console.warn('Main video autoplay failed, retrying muted:', err);
-      //         videoRef.current.muted = true;
-      //         videoRef.current.play();
-      //       });
-
-      //       // Hide local preview after switching
-      //       if (localVideoRef.current) {
-      //         localVideoRef.current.style.display = 'none';
-      //       }
-      //     }
-      //   }
-
-      //   //         if (publication.source === Track.Source.Microphone) {
-      //   //   console.log('Microphone track published ✅');
-      //   //   micTrackReceived = true;
-
-      //   //   const localAudioTrack = publication.track;
-      //   //   if (localAudioTrack && localAudioTrack.mediaStreamTrack && audioRef.current) {
-      //   //     console.log('Attaching local microphone to hidden audio element...');
-      //   //     const audioStream = new MediaStream([localAudioTrack.mediaStreamTrack]);
-      //   //     audioRef.current.srcObject = audioStream;
-      //   //     audioRef.current.muted = true; // Prevent echo feedback
-      //   //     audioRef.current
-      //   //       .play()
-      //   //       .then(() => console.log('Hidden audio element is playing mic track'))
-      //   //       .catch((err) => console.warn('Autoplay failed for audio element:', err));
-      //   //   }
-      //   // }
-
-      //   if (publication.source === Track.Source.Microphone) {
-      //     console.log('✅ Microphone track published successfully');
-      //     micTrackReceived = true;
-      //   }
-
-      // });
 
       room.on(RoomEvent.LocalTrackPublished, (publication) => {
         if (publication.source === Track.Source.Camera && videoRef.current) {
@@ -483,66 +280,46 @@ const LiveScreen = () => {
               console.warn('Main video autoplay failed:', err);
             });
 
-            // Hide local preview after switching
             if (localVideoRef.current) {
               localVideoRef.current.style.display = 'none';
             }
+            setCameraTrackReceived(true); // Update state
           }
         }
 
         if (publication.source === Track.Source.Microphone) {
           console.log('✅ Microphone track published successfully');
-          micTrackReceived = true;
-          // Do NOT attach the microphone track to any local audio or video element
+          setMicTrackReceived(true); // Update state
+          // Do NOT attach microphone track to any local playback element
         }
       });
-      // Fallback for video if track not received
-      // setTimeout(() => {
-      //   if (!cameraTrackReceived && videoRef.current && streamRef.current) {
-      //     console.warn('LiveKit track not received, falling back to getUserMedia stream');
-      //     videoRef.current.srcObject = streamRef.current;
-      //     videoRef.current.muted = false;
-      //     videoRef.current.play().catch((err) => {
-      //       console.warn('Fallback video autoplay failed, retrying muted:', err);
-      //       videoRef.current.muted = true;
-      //       videoRef.current.play();
-      //     });
-      //   }
 
-      //   if (!micTrackReceived) {
-      //     console.warn('⚠️ Microphone track not published — viewers will not hear audio.');
-      //     alert('Your mic did not connect. Please check permissions and retry.');
-      //   }
-      // }, 3000);
+      setTimeout(() => {
+        if (!cameraTrackReceived && videoRef.current && streamRef.current) {
+          console.warn('LiveKit camera track not received, falling back to getUserMedia stream');
+          videoRef.current.srcObject = streamRef.current;
+          videoRef.current.muted = true;
+          videoRef.current.play().catch((err) => {
+            console.warn('Fallback video autoplay failed:', err);
+          });
+        }
 
-      // Fallback check with longer timeout
-    setTimeout(() => {
-  if (!cameraTrackReceived && videoRef.current && streamRef.current) {
-    console.warn('LiveKit camera track not received, falling back to getUserMedia stream');
-    videoRef.current.srcObject = streamRef.current;
-    videoRef.current.muted = true; // Ensure muted
-    videoRef.current.play().catch((err) => {
-      console.warn('Fallback video autoplay failed:', err);
-    });
-  }
-
-  if (!micTrackReceived) {
-    const isMicEnabled = room.localParticipant.isMicrophoneEnabled;
-    console.log('Microphone enabled state:', isMicEnabled);
-    console.log('Published tracks:', Array.from(room.localParticipant.trackPublications.values()));
-    if (!isMicEnabled) {
-      console.error('❌ Microphone track not published');
-      alert('Your mic did not connect. Please check permissions and retry.');
-    } else {
-      console.log('✅ Microphone is enabled (may have published late)');
-      micTrackReceived = true;
-    }
-  }
-}, 5000);
+        if (!micTrackReceived) {
+          const isMicEnabled = room.localParticipant.isMicrophoneEnabled;
+          console.log('Microphone enabled state:', isMicEnabled);
+          console.log('Published tracks:', Array.from(room.localParticipant.trackPublications.values()));
+          if (!isMicEnabled) {
+            console.error('❌ Microphone track not published');
+            alert('Your mic did not connect. Please check permissions and retry.');
+          } else {
+            console.log('✅ Microphone is enabled (may have published late)');
+            setMicTrackReceived(true);
+          }
+        }
+      }, 5000);
 
       setIsStreaming(true);
 
-      // Join stream via socket
       socketRef.current.emit('join-stream', {
         streamId: streamData.streamId,
         isStreamer: true,
@@ -557,7 +334,6 @@ const LiveScreen = () => {
       setConnectionStatus('error');
       alert('Failed to start live stream: ' + error.message);
 
-      // Clean up on error
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -565,24 +341,20 @@ const LiveScreen = () => {
     }
   };
 
-
   const stopStream = async () => {
     try {
       console.log('Stopping stream...');
 
-      // Disconnect LiveKit room first
       if (liveKitRoom) {
         await liveKitRoom.disconnect();
         setLiveKitRoom(null);
       }
 
-      // Clear video elements properly
       if (videoRef.current) {
         videoRef.current.srcObject = null;
-        videoRef.current.load(); // Reset the video element
+        videoRef.current.load();
       }
 
-      // End stream via socket and API
       if (socketRef.current && streamId) {
         socketRef.current.emit('end-stream', { streamId });
       }
@@ -614,13 +386,13 @@ const LiveScreen = () => {
     setCohostRequests([]);
     setIsMuted(false);
     setIsVideoOff(false);
+    setCameraTrackReceived(false); // Reset state
+    setMicTrackReceived(false); // Reset state
 
-    // Show local preview again
     if (localVideoRef.current) {
       localVideoRef.current.style.display = 'block';
     }
 
-    // Restart camera preview
     setTimeout(() => {
       getUserMedia().catch(console.error);
     }, 1000);
@@ -657,23 +429,21 @@ const LiveScreen = () => {
 
   const toggleVideo = async () => {
     if (liveKitRoom && isLive) {
-      // Use LiveKit's methods during live stream
       const isEnabled = liveKitRoom.localParticipant.isCameraEnabled;
       await liveKitRoom.localParticipant.setCameraEnabled(!isEnabled);
       setIsVideoOff(isEnabled);
 
-      // Update the main video display
       setTimeout(() => {
         if (videoRef.current && liveKitRoom.localParticipant.getTrack(Track.Source.Camera)) {
           const localVideoTrack = liveKitRoom.localParticipant.getTrack(Track.Source.Camera).track;
           if (localVideoTrack) {
             const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
             videoRef.current.srcObject = mediaStream;
+            videoRef.current.muted = true;
           }
         }
       }, 100);
     } else if (streamRef.current) {
-      // For preview mode
       const videoTrack = streamRef.current.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
@@ -684,12 +454,10 @@ const LiveScreen = () => {
 
   const toggleMute = async () => {
     if (liveKitRoom && isLive) {
-      // Use LiveKit's methods during live stream
       const isEnabled = liveKitRoom.localParticipant.isMicrophoneEnabled;
       await liveKitRoom.localParticipant.setMicrophoneEnabled(!isEnabled);
       setIsMuted(isEnabled);
     } else if (streamRef.current) {
-      // For preview mode
       const audioTrack = streamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
@@ -714,7 +482,6 @@ const LiveScreen = () => {
       }
     } catch (error) {
       console.error('Error sharing:', error);
-      // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = shareData.url;
       document.body.appendChild(textArea);
@@ -739,7 +506,6 @@ const LiveScreen = () => {
   if (!isLive) {
     return (
       <div className="min-h-screen bg-black text-white">
-        {/* Header */}
         <div className="sticky top-0 bg-black/95 backdrop-blur-lg border-b border-gray-800 z-10 p-4">
           <h1 className="text-xl font-bold text-center">Go LIVE</h1>
           <div className="text-center mt-1">
@@ -757,7 +523,6 @@ const LiveScreen = () => {
         </div>
 
         <div className="p-4">
-          {/* Camera Preview */}
           <div className="relative bg-gray-900 rounded-xl aspect-[9/16] mb-6 overflow-hidden">
             <video
               ref={localVideoRef}
@@ -766,8 +531,6 @@ const LiveScreen = () => {
               playsInline
               className="w-full h-full object-cover"
             />
-
-            {/* Control Buttons Overlay */}
             <div className="absolute top-4 right-4 flex space-x-2">
               <button
                 onClick={toggleVideo}
@@ -775,21 +538,13 @@ const LiveScreen = () => {
               >
                 {isVideoOff ? <CameraOff className="w-5 h-5 text-white" /> : <Camera className="w-5 h-5 text-white" />}
               </button>
-              {/* <button
-                onClick={toggleMute}
-                className={`w-10 h-10 ${isMuted ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
-              >
-                {isMuted ? <MicOff className="w-5 h-5 text-white" /> : <Mic className="w-5 h-5 text-white" />}
-              </button> */}
               <button
                 onClick={toggleMute}
-                className={`w-12 h-12 ${isMuted ? 'bg-red-500' : micTrackReceived ? 'bg-green-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
+                className={`w-10 h-10 ${isMuted ? 'bg-red-500' : micTrackReceived ? 'bg-green-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
               >
-                {isMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
+                {isMuted ? <MicOff className="w-5 h-5 text-white" /> : <Mic className="w-5 h-5 text-white" />}
               </button>
             </div>
-
-            {/* No Camera Message */}
             {!streamRef.current && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
                 <div className="text-center">
@@ -801,8 +556,6 @@ const LiveScreen = () => {
               </div>
             )}
           </div>
-
-          {/* Stream Title Input */}
           <div className="mb-6">
             <label className="block text-sm font-semibold mb-2">Live title</label>
             <input
@@ -815,8 +568,6 @@ const LiveScreen = () => {
             />
             <p className="text-gray-400 text-sm mt-1">{liveTitle.length}/100</p>
           </div>
-
-          {/* Go Live Button */}
           <button
             onClick={startLive}
             disabled={!liveTitle.trim() || connectionStatus === 'connecting'}
@@ -824,8 +575,6 @@ const LiveScreen = () => {
           >
             {connectionStatus === 'connecting' ? 'Starting...' : 'Go LIVE'}
           </button>
-
-          {/* Tips Section */}
           <div className="mt-8 bg-gray-900 rounded-xl p-4">
             <h3 className="font-bold mb-3 text-center">Tips for going live</h3>
             <div className="space-y-3 text-sm text-gray-300">
@@ -848,10 +597,8 @@ const LiveScreen = () => {
     );
   }
 
-  // Live streaming screen
   return (
     <div className="relative h-screen bg-gray-900 overflow-hidden">
-      {/* Main Video Stream */}
       <video
         ref={videoRef}
         autoPlay
@@ -859,8 +606,6 @@ const LiveScreen = () => {
         playsInline
         className="absolute inset-0 w-full h-full object-cover"
       />
-
-      {/* Hearts Animation Overlay */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {hearts.map((heart) => (
           <div
@@ -875,8 +620,6 @@ const LiveScreen = () => {
           </div>
         ))}
       </div>
-
-      {/* Top Controls */}
       <div className="absolute top-4 left-4 z-20">
         <div className="bg-red-500 px-3 py-1 rounded-full flex items-center space-x-2">
           <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
@@ -884,7 +627,6 @@ const LiveScreen = () => {
           <span className="text-white font-bold text-sm">{viewers}</span>
         </div>
       </div>
-
       <div className="absolute top-4 right-4 z-20 flex space-x-2">
         {cohostRequests.length > 0 && (
           <button
@@ -907,15 +649,12 @@ const LiveScreen = () => {
           End
         </button>
       </div>
-
-      {/* Comments Display */}
       <div className="absolute bottom-24 left-0 right-0 p-4 pointer-events-none">
         <div className="bg-black/30 backdrop-blur-sm rounded-xl p-3 max-h-40 overflow-y-auto pointer-events-auto">
           <div className="space-y-2">
             {comments.slice(-5).map((comment, index) => (
               <div key={index} className="flex items-start space-x-2 animate-fadeIn">
-                <div className={`w-6 h-6 rounded-full flex-shrink-0 ${['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-yellow-500'][index % 5]
-                  }`}></div>
+                <div className={`w-6 h-6 rounded-full flex-shrink-0 ${['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-yellow-500'][index % 5]}`}></div>
                 <div className="min-w-0 flex-1">
                   <span className="text-white font-semibold text-sm">
                     {comment.username || 'Anonymous'}
@@ -934,19 +673,17 @@ const LiveScreen = () => {
           <div ref={commentsEndRef} />
         </div>
       </div>
-
-      {/* Bottom Controls */}
       <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center">
         <div className="flex space-x-2">
           <button
             onClick={toggleMute}
-            className={`w-12 h-12 ${isMuted ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
+            className={`w-12 h-12 ${isMuted ? 'bg-red-500' : micTrackReceived ? 'bg-green-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
           >
             {isMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
           </button>
           <button
             onClick={toggleVideo}
-            className={`w-12 h-12 ${isVideoOff ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
+            className={`w-12 h-12 ${isVideoOff ? 'bg-red-500' : cameraTrackReceived ? 'bg-green-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
           >
             {isVideoOff ? <CameraOff className="w-6 h-6 text-white" /> : <Camera className="w-6 h-6 text-white" />}
           </button>
@@ -958,8 +695,6 @@ const LiveScreen = () => {
           <Heart className="w-6 h-6 text-red-500" />
         </button>
       </div>
-
-      {/* Comment Input */}
       <div className="absolute bottom-20 left-4 right-20">
         <form onSubmit={sendComment} className="flex items-center space-x-2">
           <div className="flex-1 relative">
@@ -981,8 +716,6 @@ const LiveScreen = () => {
           </div>
         </form>
       </div>
-
-      {/* Co-host Requests Modal */}
       {showRequestsModal && (
         <div className="absolute inset-0 bg-black/50 z-30 flex items-center justify-center p-4">
           <div className="bg-gray-800 rounded-xl p-6 max-w-sm w-full max-h-96 overflow-y-auto">
@@ -1034,104 +767,65 @@ const LiveScreen = () => {
           </div>
         </div>
       )}
-
-      {/* Custom Styles */}
       <style jsx>{`
         @keyframes heartFloat {
-          0% { 
-            transform: translateY(0) scale(1); 
-            opacity: 1; 
-          }
-          50% { 
-            transform: translateY(-100px) scale(1.2); 
-            opacity: 0.8; 
-          }
-          100% { 
-            transform: translateY(-200px) scale(0.8); 
-            opacity: 0; 
-          }
+          0% { transform: translateY(0) scale(1); opacity: 1; }
+          50% { transform: translateY(-100px) scale(1.2); opacity: 0.8; }
+          100% { transform: translateY(-200px) scale(0.8); opacity: 0; }
         }
-        
         @keyframes fadeIn {
-          from { 
-            opacity: 0; 
-            transform: translateY(10px); 
-          }
-          to { 
-            opacity: 1; 
-            transform: translateY(0); 
-          }
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        
         .animate-fadeIn {
           animation: fadeIn 0.3s ease-out;
         }
-        
-        /* Custom scrollbar for comments */
         .overflow-y-auto::-webkit-scrollbar {
           width: 4px;
         }
-        
         .overflow-y-auto::-webkit-scrollbar-track {
           background: rgba(75, 85, 99, 0.3);
           border-radius: 2px;
         }
-        
         .overflow-y-auto::-webkit-scrollbar-thumb {
           background: rgba(156, 163, 175, 0.5);
           border-radius: 2px;
         }
-        
         .overflow-y-auto::-webkit-scrollbar-thumb:hover {
           background: rgba(156, 163, 175, 0.7);
         }
-        
-        /* Ensure video elements are properly styled */
         video {
           background: #000;
         }
-        
-        /* Mobile optimizations */
         @media (max-width: 768px) {
           .absolute.bottom-20 {
             bottom: 5rem;
           }
-          
           .absolute.bottom-4 {
             bottom: 1rem;
           }
-          
           .aspect-\[9\/16\] {
             aspect-ratio: 9/16;
           }
         }
-        
-        /* Prevent text selection on buttons */
         button {
           -webkit-user-select: none;
           -moz-user-select: none;
           -ms-user-select: none;
           user-select: none;
         }
-        
-        /* Smooth transitions for all interactive elements */
         button, input {
           transition: all 0.2s ease-in-out;
         }
-        
-        /* Focus styles for accessibility */
         button:focus,
         input:focus {
           outline: 2px solid #ef4444;
           outline-offset: 2px;
         }
-        
-        /* Loading states */
         .loading {
           position: relative;
           overflow: hidden;
         }
-        
         .loading::after {
           content: '';
           position: absolute;
@@ -1147,19 +841,11 @@ const LiveScreen = () => {
           );
           animation: loading 1.5s infinite;
         }
-        
         @keyframes loading {
-          0% {
-            left: -100%;
-          }
-          100% {
-            left: 100%;
-          }
+          0% { left: -100%; }
+          100% { left: 100%; }
         }
       `}</style>
-      {/* Hidden audio element for mic verification */}
-      {/* <audio ref={audioRef} autoPlay playsInline muted hidden /> */}
-
     </div>
   );
 };
