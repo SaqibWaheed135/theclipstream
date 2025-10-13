@@ -87,7 +87,6 @@ const LiveViewer = () => {
           setTimeout(() => navigate('/'), 3000);
         });
 
-        // If we already have viewer token in streamData, connect immediately
         if (streamData.viewerToken) {
           const roomUrl = streamData.roomUrl || LIVEKIT_URL;
           await connectToLiveKitRoom(roomUrl, streamData.viewerToken);
@@ -110,6 +109,8 @@ const LiveViewer = () => {
       if (liveKitRoom) {
         liveKitRoom.disconnect();
       }
+      // Clean up audio elements
+      document.querySelectorAll('audio[data-participant]').forEach(el => el.remove());
     };
   }, [streamId, navigate]);
 
@@ -146,13 +147,15 @@ const LiveViewer = () => {
       await room.connect(roomUrl, viewerToken);
       setLiveKitRoom(room);
 
-      // Subscribe to new remote tracks
+      // Subscribe to new remote tracks with FIXED AUDIO HANDLING
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         console.log(
           'Subscribed to track from:',
           participant.identity,
           'Kind:',
-          track.kind
+          track.kind,
+          'Track enabled:',
+          track.mediaStreamTrack?.enabled
         );
 
         if (track.kind === Track.Kind.Video) {
@@ -174,24 +177,55 @@ const LiveViewer = () => {
 
           if (videoEl) {
             track.attach(videoEl);
-            videoEl.play().catch(console.error);
+            videoEl.muted = false;
+            videoEl.volume = 1.0;
+            videoEl.play().catch((err) => {
+              console.warn('Video autoplay failed:', err);
+              videoEl.muted = true;
+              videoEl.play().then(() => {
+                setTimeout(() => { videoEl.muted = false; }, 100);
+              }).catch(console.error);
+            });
           }
         }
 
-        // 🔊 Handle audio track
+        // 🔊 FIXED AUDIO TRACK HANDLING
         if (track.kind === Track.Kind.Audio) {
+          // Remove any existing audio element for this participant
+          const existingAudio = document.querySelector(
+            `audio[data-participant="${participant.identity}"]`
+          );
+          if (existingAudio) {
+            existingAudio.remove();
+          }
+
           const audioEl = document.createElement('audio');
           audioEl.autoplay = true;
           audioEl.playsInline = true;
+          audioEl.muted = false;
+          audioEl.volume = 1.0;
           audioEl.dataset.participant = participant.identity;
+          
           track.attach(audioEl);
-
-          // append to DOM (hidden)
           document.body.appendChild(audioEl);
-          console.log('Audio track attached for', participant.identity);
+          
+          audioEl.play()
+            .then(() => console.log('✅ Audio track playing for', participant.identity))
+            .catch((err) => {
+              console.error('❌ Audio autoplay failed:', err);
+              // Try to play on next user interaction
+              const playOnClick = () => {
+                audioEl.play()
+                  .then(() => {
+                    console.log('✅ Audio started after user interaction');
+                    document.removeEventListener('click', playOnClick);
+                  })
+                  .catch(console.error);
+              };
+              document.addEventListener('click', playOnClick, { once: true });
+            });
         }
       });
-
 
       room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
         console.log('Unsubscribed from track:', participant.identity);
@@ -214,7 +248,6 @@ const LiveViewer = () => {
         }
       });
 
-
       room.on(RoomEvent.ParticipantConnected, (participant) => {
         console.log('New participant joined:', participant.identity);
         subscribeToNewTracks();
@@ -228,9 +261,14 @@ const LiveViewer = () => {
           videoEl.srcObject = null;
         }
         delete videoRefs.current[participant.identity];
+        
+        // Remove audio elements
+        const audioEls = document.querySelectorAll(
+          `audio[data-participant="${participant.identity}"]`
+        );
+        audioEls.forEach((el) => el.remove());
       });
 
-      // 🔑 Subscribe to existing tracks
       const subscribeToNewTracks = () => {
         room.remoteParticipants.forEach((participant) => {
           participant.trackPublications.forEach((pub) => {
@@ -254,8 +292,6 @@ const LiveViewer = () => {
       setError('Failed to connect to live stream: ' + error.message);
     }
   };
-
-
 
   const addHeart = () => {
     const heartId = Date.now() + Math.random();
@@ -293,13 +329,12 @@ const LiveViewer = () => {
     ? Array.from(liveKitRoom.remoteParticipants.values())
     : [];
 
-
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Video Grid */}
       <div
-        className={`relative aspect-[9/16] bg-gray-900 grid ${participants.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
-          }`}
+        className={`relative aspect-[9/16] bg-gray-900 grid ${
+          participants.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
+        }`}
       >
         {participants.length === 0 ? (
           <div className="flex items-center justify-center">
@@ -314,8 +349,7 @@ const LiveViewer = () => {
             const hasMic = micPub?.isSubscribed && micPub?.track;
 
             return (
-              <div key={p.identity} className="relative bg-gray-800">
-                {/* Camera video element */}
+              <div key={p.identity} className="relative bg-gray-800" data-participant-video>
                 <video
                   autoPlay
                   playsInline
@@ -325,20 +359,27 @@ const LiveViewer = () => {
                   ref={(el) => {
                     if (el) {
                       videoRefs.current[p.identity] = el;
+                      el.muted = false;
+                      el.volume = 1.0;
                       if (hasCamera) {
                         camPub.track.attach(el);
-                        el.play().catch(console.error);
+                        el.play().catch((err) => {
+                          console.warn('Video play failed:', err);
+                          el.muted = true;
+                          el.play().then(() => {
+                            setTimeout(() => { el.muted = false; }, 100);
+                          }).catch(console.error);
+                        });
                       }
                     }
                   }}
                 />
 
-                {/* Host name tag */}
-                <div className="absolute top-2 left-2 bg-black/50 px-2 py-1 rounded text-sm">
-                  @{p.identity}
+                <div className="absolute top-2 left-2 bg-black/50 px-2 py-1 rounded text-sm flex items-center gap-2">
+                  <span>@{p.identity}</span>
+                  {hasMic && <span className="text-green-400">🎤</span>}
                 </div>
 
-                {/* ✅ Fallback if no camera track */}
                 {!hasCamera && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-gray-400">
                     <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center text-2xl font-bold">
@@ -355,12 +396,9 @@ const LiveViewer = () => {
               </div>
             );
           })
-
         )}
       </div>
 
-
-      {/* Hearts overlay */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {hearts.map((heart) => (
           <div
@@ -376,7 +414,6 @@ const LiveViewer = () => {
         ))}
       </div>
 
-      {/* Chat Section */}
       <div className="bg-gray-900 border-t border-gray-800">
         <div className="h-64 overflow-y-auto p-4 space-y-3">
           {comments.map((c, i) => (
@@ -398,6 +435,14 @@ const LiveViewer = () => {
           </button>
         </form>
       </div>
+
+      <style>{`
+        @keyframes heartFloat {
+          0% { transform: translateY(0) scale(1); opacity: 1; }
+          50% { transform: translateY(-100px) scale(1.2); opacity: 0.8; }
+          100% { transform: translateY(-200px) scale(0.8); opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 };
