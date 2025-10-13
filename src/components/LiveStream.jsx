@@ -153,25 +153,29 @@ const HostLiveStream = () => {
       console.log('✅ Camera and microphone enabled');
 
       room.on(RoomEvent.LocalTrackPublished, (publication) => {
-        console.log('Track published:', publication.source);
+        console.log('Track published:', publication.source, 'Track:', publication.track);
         
         if (publication.source === Track.Source.Camera) {
           const localVideoTrack = publication.track;
-          if (localVideoTrack && videoRef.current) {
+          if (localVideoTrack && localVideoTrack.mediaStreamTrack) {
             console.log('Attaching camera track to video element');
             const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
-            videoRef.current.srcObject = mediaStream;
-            videoRef.current.muted = true;
-            videoRef.current.play()
-              .then(() => console.log('✅ Video playing'))
-              .catch(err => console.error('Video play error:', err));
             
-            // Hide preview after a small delay to ensure new video is ready
-            setTimeout(() => {
-              if (localVideoRef.current) {
-                localVideoRef.current.style.display = 'none';
-              }
-            }, 500);
+            if (videoRef.current) {
+              videoRef.current.srcObject = mediaStream;
+              videoRef.current.muted = true;
+              videoRef.current.play()
+                .then(() => {
+                  console.log('✅ LiveKit video playing');
+                  // Hide preview after LiveKit video is confirmed playing
+                  setTimeout(() => {
+                    if (localVideoRef.current) {
+                      localVideoRef.current.style.display = 'none';
+                    }
+                  }, 300);
+                })
+                .catch(err => console.error('Video play error:', err));
+            }
           }
         }
 
@@ -180,13 +184,26 @@ const HostLiveStream = () => {
         }
       });
 
-      // Fallback: If track doesn't publish in 3 seconds, keep showing preview
+      // IMPORTANT: Attach existing tracks immediately (they may already be published)
       setTimeout(() => {
-        if (videoRef.current && !videoRef.current.srcObject && localVideoRef.current) {
-          console.log('⚠️ Using preview as fallback');
-          // Don't hide preview if LiveKit track didn't attach
+        const camPublication = room.localParticipant.getTrackPublication(Track.Source.Camera);
+        if (camPublication && camPublication.track && videoRef.current) {
+          console.log('⚡ Manually attaching camera track');
+          const mediaStream = new MediaStream([camPublication.track.mediaStreamTrack]);
+          videoRef.current.srcObject = mediaStream;
+          videoRef.current.muted = true;
+          videoRef.current.play()
+            .then(() => {
+              console.log('✅ Manual attach successful');
+              if (localVideoRef.current) {
+                localVideoRef.current.style.display = 'none';
+              }
+            })
+            .catch(err => console.error('Manual attach error:', err));
+        } else {
+          console.log('⚠️ Camera track not found, keeping preview');
         }
-      }, 3000);
+      }, 1000);
 
       setLiveKitRoom(room);
       setIsLive(true);
@@ -297,24 +314,26 @@ const HostLiveStream = () => {
           </div>
 
           <div className="bg-black rounded-lg aspect-video mb-4 relative overflow-hidden">
+            {/* LiveKit video - shows after connection */}
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
               className="w-full h-full object-cover"
-              style={{ display: 'block' }}
+              style={{ position: 'absolute', top: 0, left: 0, zIndex: 2 }}
             />
+            {/* Local preview - shows before going live, hidden after LiveKit connects */}
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover absolute inset-0"
-              style={{ display: 'block' }}
+              className="w-full h-full object-cover"
+              style={{ position: 'absolute', top: 0, left: 0, zIndex: 1 }}
             />
             {!isCameraOn && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-900" style={{ zIndex: 10 }}>
                 <VideoOff className="w-16 h-16 text-gray-600" />
               </div>
             )}
