@@ -142,6 +142,13 @@ const HostLiveStream = () => {
       await room.connect(data.roomUrl, data.publishToken);
       console.log('✅ Connected to LiveKit room');
 
+      // Get existing tracks from the preview
+      const videoTrack = localStream.getVideoTracks()[0];
+      const audioTrack = localStream.getAudioTracks()[0];
+      
+      console.log('Video track available:', !!videoTrack);
+      console.log('Audio track available:', !!audioTrack);
+
       await room.localParticipant.enableCameraAndMicrophone();
       console.log('✅ Camera and microphone enabled');
 
@@ -151,14 +158,20 @@ const HostLiveStream = () => {
         if (publication.source === Track.Source.Camera) {
           const localVideoTrack = publication.track;
           if (localVideoTrack && videoRef.current) {
+            console.log('Attaching camera track to video element');
             const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
             videoRef.current.srcObject = mediaStream;
             videoRef.current.muted = true;
-            videoRef.current.play().catch(console.error);
+            videoRef.current.play()
+              .then(() => console.log('✅ Video playing'))
+              .catch(err => console.error('Video play error:', err));
             
-            if (localVideoRef.current) {
-              localVideoRef.current.style.display = 'none';
-            }
+            // Hide preview after a small delay to ensure new video is ready
+            setTimeout(() => {
+              if (localVideoRef.current) {
+                localVideoRef.current.style.display = 'none';
+              }
+            }, 500);
           }
         }
 
@@ -166,6 +179,14 @@ const HostLiveStream = () => {
           console.log('✅ Microphone track published');
         }
       });
+
+      // Fallback: If track doesn't publish in 3 seconds, keep showing preview
+      setTimeout(() => {
+        if (videoRef.current && !videoRef.current.srcObject && localVideoRef.current) {
+          console.log('⚠️ Using preview as fallback');
+          // Don't hide preview if LiveKit track didn't attach
+        }
+      }, 3000);
 
       setLiveKitRoom(room);
       setIsLive(true);
@@ -282,16 +303,18 @@ const HostLiveStream = () => {
               playsInline
               muted
               className="w-full h-full object-cover"
+              style={{ display: 'block' }}
             />
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover absolute inset-0"
+              style={{ display: 'block' }}
             />
             {!isCameraOn && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
                 <VideoOff className="w-16 h-16 text-gray-600" />
               </div>
             )}
