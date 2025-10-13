@@ -28,8 +28,7 @@ import PointsRechargeScreen from "./components/PointsRechargeScreen.jsx";
 import NotificationsScreen from "./components/NotificationsScreen.jsx";
 import FollowRequestsScreen from "./components/FollowRequestScreen.jsx";
 import PointsWithdrawalScreen from "./components/PointsWithdrawalScreen.jsx";
-import HostLiveStream from "./components/LiveStream.jsx";
-import ViewerLiveStream from "./components/LiveStream.jsx"
+import LiveScreenBothCode from './components/LiveStream.jsx'
 
 // --------------------
 // Bottom Navigation
@@ -39,7 +38,7 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
     { id: "home", icon: Home, label: "Home", path: "/" },
     { id: "search", icon: Search, label: "Discover", path: "/search" },
     { id: "upload", icon: Plus, label: "Create", path: "/upload" },
-    { id: "live", icon: CircleDot, label: "LIVE", path: "/live-browse" },
+    { id: "live", icon: CircleDot, label: "LIVE", path: "/live-host-stream" },
     { id: "profile", icon: User, label: "Profile", path: "/profile" },
   ];
 
@@ -123,13 +122,7 @@ const App = () => {
   const [mode, setMode] = useState('select'); // 'select', 'host', 'viewer'
   const [streamId, setStreamId] = useState('');
 
-  if (mode === 'host') {
-    return <HostLiveStream />;
-  }
-
-  if (mode === 'viewer' && streamId) {
-    return <ViewerLiveStream streamId={streamId} />;
-  }
+  
 
   // 👇 State for install prompt (Android)
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -221,6 +214,8 @@ const App = () => {
           <Route path="/messages/:conversationId" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
           <Route path="/live-browse" element={<ProtectedRoute><LiveBrowse /></ProtectedRoute>} />
           <Route path="/live/:streamId" element={<LiveViewer />} />
+          <Route path="/live-host-stream" element={<ProtectedRoute>< LiveScreenBothCode /></ProtectedRoute>} />
+         
         </Routes>
       </main>
 
