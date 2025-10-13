@@ -425,19 +425,62 @@ const LiveScreen = () => {
 
 
       // Listen for local track publications
+      // room.on(RoomEvent.LocalTrackPublished, (publication) => {
+      //   if (publication.source === Track.Source.Camera && videoRef.current) {
+      //     console.log('Camera track published, setting video element...');
+      //     const localVideoTrack = publication.track;
+      //     if (localVideoTrack && localVideoTrack.mediaStreamTrack) {
+      //       cameraTrackReceived = true;
+      //       const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
+      //       videoRef.current.srcObject = mediaStream;
+      //       videoRef.current.muted = false;
+      //       videoRef.current.play().catch((err) => {
+      //         console.warn('Main video autoplay failed, retrying muted:', err);
+      //         videoRef.current.muted = true;
+      //         videoRef.current.play();
+      //       });
+
+      //       // Hide local preview after switching
+      //       if (localVideoRef.current) {
+      //         localVideoRef.current.style.display = 'none';
+      //       }
+      //     }
+      //   }
+
+      //   //         if (publication.source === Track.Source.Microphone) {
+      //   //   console.log('Microphone track published ✅');
+      //   //   micTrackReceived = true;
+
+      //   //   const localAudioTrack = publication.track;
+      //   //   if (localAudioTrack && localAudioTrack.mediaStreamTrack && audioRef.current) {
+      //   //     console.log('Attaching local microphone to hidden audio element...');
+      //   //     const audioStream = new MediaStream([localAudioTrack.mediaStreamTrack]);
+      //   //     audioRef.current.srcObject = audioStream;
+      //   //     audioRef.current.muted = true; // Prevent echo feedback
+      //   //     audioRef.current
+      //   //       .play()
+      //   //       .then(() => console.log('Hidden audio element is playing mic track'))
+      //   //       .catch((err) => console.warn('Autoplay failed for audio element:', err));
+      //   //   }
+      //   // }
+
+      //   if (publication.source === Track.Source.Microphone) {
+      //     console.log('✅ Microphone track published successfully');
+      //     micTrackReceived = true;
+      //   }
+
+      // });
+
       room.on(RoomEvent.LocalTrackPublished, (publication) => {
         if (publication.source === Track.Source.Camera && videoRef.current) {
           console.log('Camera track published, setting video element...');
           const localVideoTrack = publication.track;
           if (localVideoTrack && localVideoTrack.mediaStreamTrack) {
-            cameraTrackReceived = true;
-            const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
+            const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]); // Only video track
             videoRef.current.srcObject = mediaStream;
-            videoRef.current.muted = false;
+            videoRef.current.muted = true; // Ensure muted to prevent audio feedback
             videoRef.current.play().catch((err) => {
-              console.warn('Main video autoplay failed, retrying muted:', err);
-              videoRef.current.muted = true;
-              videoRef.current.play();
+              console.warn('Main video autoplay failed:', err);
             });
 
             // Hide local preview after switching
@@ -447,30 +490,12 @@ const LiveScreen = () => {
           }
         }
 
-        //         if (publication.source === Track.Source.Microphone) {
-        //   console.log('Microphone track published ✅');
-        //   micTrackReceived = true;
-
-        //   const localAudioTrack = publication.track;
-        //   if (localAudioTrack && localAudioTrack.mediaStreamTrack && audioRef.current) {
-        //     console.log('Attaching local microphone to hidden audio element...');
-        //     const audioStream = new MediaStream([localAudioTrack.mediaStreamTrack]);
-        //     audioRef.current.srcObject = audioStream;
-        //     audioRef.current.muted = true; // Prevent echo feedback
-        //     audioRef.current
-        //       .play()
-        //       .then(() => console.log('Hidden audio element is playing mic track'))
-        //       .catch((err) => console.warn('Autoplay failed for audio element:', err));
-        //   }
-        // }
-
         if (publication.source === Track.Source.Microphone) {
           console.log('✅ Microphone track published successfully');
           micTrackReceived = true;
+          // Do NOT attach the microphone track to any local audio or video element
         }
-
       });
-
       // Fallback for video if track not received
       // setTimeout(() => {
       //   if (!cameraTrackReceived && videoRef.current && streamRef.current) {
@@ -491,30 +516,29 @@ const LiveScreen = () => {
       // }, 3000);
 
       // Fallback check with longer timeout
-setTimeout(() => {
+    setTimeout(() => {
   if (!cameraTrackReceived && videoRef.current && streamRef.current) {
     console.warn('LiveKit camera track not received, falling back to getUserMedia stream');
     videoRef.current.srcObject = streamRef.current;
-    videoRef.current.muted = false;
+    videoRef.current.muted = true; // Ensure muted
     videoRef.current.play().catch((err) => {
-      console.warn('Fallback video autoplay failed, retrying muted:', err);
-      videoRef.current.muted = true;
-      videoRef.current.play();
+      console.warn('Fallback video autoplay failed:', err);
     });
   }
 
-  // Check if microphone is actually enabled in LiveKit
   if (!micTrackReceived) {
     const isMicEnabled = room.localParticipant.isMicrophoneEnabled;
+    console.log('Microphone enabled state:', isMicEnabled);
+    console.log('Published tracks:', Array.from(room.localParticipant.trackPublications.values()));
     if (!isMicEnabled) {
       console.error('❌ Microphone track not published');
       alert('Your mic did not connect. Please check permissions and retry.');
     } else {
       console.log('✅ Microphone is enabled (may have published late)');
-      micTrackReceived = true; // Update the flag
+      micTrackReceived = true;
     }
   }
-}, 5000); // Increased to 5 seconds
+}, 5000);
 
       setIsStreaming(true);
 
@@ -751,11 +775,17 @@ setTimeout(() => {
               >
                 {isVideoOff ? <CameraOff className="w-5 h-5 text-white" /> : <Camera className="w-5 h-5 text-white" />}
               </button>
-              <button
+              {/* <button
                 onClick={toggleMute}
                 className={`w-10 h-10 ${isMuted ? 'bg-red-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
               >
                 {isMuted ? <MicOff className="w-5 h-5 text-white" /> : <Mic className="w-5 h-5 text-white" />}
+              </button> */}
+              <button
+                onClick={toggleMute}
+                className={`w-12 h-12 ${isMuted ? 'bg-red-500' : micTrackReceived ? 'bg-green-500' : 'bg-black/50'} backdrop-blur-sm rounded-full flex items-center justify-center transition-colors`}
+              >
+                {isMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
               </button>
             </div>
 

@@ -130,6 +130,169 @@ const LiveViewer = () => {
     }
   };
 
+  // const connectToLiveKitRoom = async (roomUrl, viewerToken) => {
+  //   try {
+  //     if (!viewerToken || typeof viewerToken !== 'string') {
+  //       console.error('Invalid viewer token:', viewerToken);
+  //       setError('Invalid viewer token');
+  //       return;
+  //     }
+
+  //     console.log('Connecting to LiveKit as viewer:', {
+  //       roomUrl,
+  //       tokenLength: viewerToken.length,
+  //     });
+
+  //     const room = new Room();
+  //     await room.connect(roomUrl, viewerToken);
+  //     setLiveKitRoom(room);
+
+  //     // Subscribe to new remote tracks with FIXED AUDIO HANDLING
+  //     room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+  //       console.log(
+  //         'Subscribed to track from:',
+  //         participant.identity,
+  //         'Kind:',
+  //         track.kind,
+  //         'Track enabled:',
+  //         track.mediaStreamTrack?.enabled
+  //       );
+
+  //       if (track.kind === Track.Kind.Video) {
+  //         let videoEl = videoRefs.current[participant.identity];
+  //         if (!videoEl) {
+  //           const containers = document.querySelectorAll('[data-participant-video]');
+  //           const availableContainer = Array.from(containers).find(
+  //             (c) => !c.querySelector('video[data-participant]')
+  //           );
+
+  //           if (availableContainer) {
+  //             videoEl = availableContainer.querySelector('video');
+  //             if (videoEl) {
+  //               videoEl.setAttribute('data-participant', participant.identity);
+  //               videoRefs.current[participant.identity] = videoEl;
+  //             }
+  //           }
+  //         }
+
+  //         if (videoEl) {
+  //           track.attach(videoEl);
+  //           videoEl.muted = false;
+  //           videoEl.volume = 1.0;
+  //           videoEl.play().catch((err) => {
+  //             console.warn('Video autoplay failed:', err);
+  //             videoEl.muted = true;
+  //             videoEl.play().then(() => {
+  //               setTimeout(() => { videoEl.muted = false; }, 100);
+  //             }).catch(console.error);
+  //           });
+  //         }
+  //       }
+
+  //       // 🔊 FIXED AUDIO TRACK HANDLING
+  //       if (track.kind === Track.Kind.Audio) {
+  //         // Remove any existing audio element for this participant
+  //         const existingAudio = document.querySelector(
+  //           `audio[data-participant="${participant.identity}"]`
+  //         );
+  //         if (existingAudio) {
+  //           existingAudio.remove();
+  //         }
+
+  //         const audioEl = document.createElement('audio');
+  //         audioEl.autoplay = true;
+  //         audioEl.playsInline = true;
+  //         audioEl.muted = false;
+  //         audioEl.volume = 1.0;
+  //         audioEl.dataset.participant = participant.identity;
+
+  //         track.attach(audioEl);
+  //         document.body.appendChild(audioEl);
+
+  //         audioEl.play()
+  //           .then(() => console.log('✅ Audio track playing for', participant.identity))
+  //           .catch((err) => {
+  //             console.error('❌ Audio autoplay failed:', err);
+  //             // Try to play on next user interaction
+  //             const playOnClick = () => {
+  //               audioEl.play()
+  //                 .then(() => {
+  //                   console.log('✅ Audio started after user interaction');
+  //                   document.removeEventListener('click', playOnClick);
+  //                 })
+  //                 .catch(console.error);
+  //             };
+  //             document.addEventListener('click', playOnClick, { once: true });
+  //           });
+  //       }
+  //     });
+
+  //     room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+  //       console.log('Unsubscribed from track:', participant.identity);
+
+  //       if (track.kind === Track.Kind.Video) {
+  //         track.detach();
+  //         const videoEl = videoRefs.current[participant.identity];
+  //         if (videoEl) {
+  //           videoEl.removeAttribute('data-participant');
+  //           videoEl.srcObject = null;
+  //         }
+  //       }
+
+  //       if (track.kind === Track.Kind.Audio) {
+  //         const audioEls = document.querySelectorAll(
+  //           `audio[data-participant="${participant.identity}"]`
+  //         );
+  //         audioEls.forEach((el) => el.remove());
+  //         track.detach();
+  //       }
+  //     });
+
+  //     room.on(RoomEvent.ParticipantConnected, (participant) => {
+  //       console.log('New participant joined:', participant.identity);
+  //       subscribeToNewTracks();
+  //     });
+
+  //     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+  //       console.log('Participant left:', participant.identity);
+  //       const videoEl = videoRefs.current[participant.identity];
+  //       if (videoEl) {
+  //         videoEl.removeAttribute('data-participant');
+  //         videoEl.srcObject = null;
+  //       }
+  //       delete videoRefs.current[participant.identity];
+
+  //       // Remove audio elements
+  //       const audioEls = document.querySelectorAll(
+  //         `audio[data-participant="${participant.identity}"]`
+  //       );
+  //       audioEls.forEach((el) => el.remove());
+  //     });
+
+  //     const subscribeToNewTracks = () => {
+  //       room.remoteParticipants.forEach((participant) => {
+  //         participant.trackPublications.forEach((pub) => {
+  //           if (pub.isSubscribed && pub.track?.kind === Track.Kind.Video) {
+  //             const track = pub.track;
+  //             const videoEl = videoRefs.current[participant.identity];
+  //             if (videoEl && !videoEl.srcObject) {
+  //               track.attach(videoEl);
+  //               videoEl.play().catch(console.error);
+  //             }
+  //           }
+  //         });
+  //       });
+  //     };
+
+  //     subscribeToNewTracks();
+
+  //     console.log('LiveKit room connected as viewer');
+  //   } catch (error) {
+  //     console.error('LiveKit viewer connection error:', error);
+  //     setError('Failed to connect to live stream: ' + error.message);
+  //   }
+  // };
+
   const connectToLiveKitRoom = async (roomUrl, viewerToken) => {
     try {
       if (!viewerToken || typeof viewerToken !== 'string') {
@@ -147,7 +310,6 @@ const LiveViewer = () => {
       await room.connect(roomUrl, viewerToken);
       setLiveKitRoom(room);
 
-      // Subscribe to new remote tracks with FIXED AUDIO HANDLING
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         console.log(
           'Subscribed to track from:',
@@ -177,19 +339,15 @@ const LiveViewer = () => {
 
           if (videoEl) {
             track.attach(videoEl);
-            videoEl.muted = false;
-            videoEl.volume = 1.0;
+            videoEl.muted = true; // Video elements should not handle audio
+            videoEl.volume = 0;
             videoEl.play().catch((err) => {
               console.warn('Video autoplay failed:', err);
-              videoEl.muted = true;
-              videoEl.play().then(() => {
-                setTimeout(() => { videoEl.muted = false; }, 100);
-              }).catch(console.error);
+              videoEl.play().catch(console.error);
             });
           }
         }
 
-        // 🔊 FIXED AUDIO TRACK HANDLING
         if (track.kind === Track.Kind.Audio) {
           // Remove any existing audio element for this participant
           const existingAudio = document.querySelector(
@@ -205,22 +363,23 @@ const LiveViewer = () => {
           audioEl.muted = false;
           audioEl.volume = 1.0;
           audioEl.dataset.participant = participant.identity;
-          
+
           track.attach(audioEl);
           document.body.appendChild(audioEl);
-          
+
           audioEl.play()
             .then(() => console.log('✅ Audio track playing for', participant.identity))
             .catch((err) => {
               console.error('❌ Audio autoplay failed:', err);
-              // Try to play on next user interaction
+              setError('Please click anywhere to enable audio');
               const playOnClick = () => {
                 audioEl.play()
                   .then(() => {
                     console.log('✅ Audio started after user interaction');
+                    setError(null);
                     document.removeEventListener('click', playOnClick);
                   })
-                  .catch(console.error);
+                  .catch((e) => console.error('Audio play failed after click:', e));
               };
               document.addEventListener('click', playOnClick, { once: true });
             });
@@ -261,8 +420,7 @@ const LiveViewer = () => {
           videoEl.srcObject = null;
         }
         delete videoRefs.current[participant.identity];
-        
-        // Remove audio elements
+
         const audioEls = document.querySelectorAll(
           `audio[data-participant="${participant.identity}"]`
         );
@@ -277,6 +435,7 @@ const LiveViewer = () => {
               const videoEl = videoRefs.current[participant.identity];
               if (videoEl && !videoEl.srcObject) {
                 track.attach(videoEl);
+                videoEl.muted = true; // Ensure video element is muted
                 videoEl.play().catch(console.error);
               }
             }
@@ -331,10 +490,14 @@ const LiveViewer = () => {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      {error && (
+        <div className="absolute top-4 left-4 bg-red-500/80 px-4 py-2 rounded text-white text-sm">
+          {error}
+        </div>
+      )}
       <div
-        className={`relative aspect-[9/16] bg-gray-900 grid ${
-          participants.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
-        }`}
+        className={`relative aspect-[9/16] bg-gray-900 grid ${participants.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
+          }`}
       >
         {participants.length === 0 ? (
           <div className="flex items-center justify-center">
@@ -400,6 +563,11 @@ const LiveViewer = () => {
       </div>
 
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {error && (
+          <div className="absolute top-4 left-4 bg-red-500/80 px-4 py-2 rounded text-white text-sm">
+            {error}
+          </div>
+        )}
         {hearts.map((heart) => (
           <div
             key={heart.id}
