@@ -348,42 +348,101 @@ const LiveViewer = () => {
           }
         }
 
+        // if (track.kind === Track.Kind.Audio) {
+        //   // Remove any existing audio element for this participant
+        //   const existingAudio = document.querySelector(
+        //     `audio[data-participant="${participant.identity}"]`
+        //   );
+        //   if (existingAudio) {
+        //     existingAudio.remove();
+        //   }
+
+        //   const audioEl = document.createElement('audio');
+        //   audioEl.autoplay = true;
+        //   audioEl.playsInline = true;
+        //   audioEl.muted = false;
+        //   audioEl.volume = 1.0;
+        //   audioEl.dataset.participant = participant.identity;
+
+        //   track.attach(audioEl);
+        //   document.body.appendChild(audioEl);
+
+        //   audioEl.play()
+        //     .then(() => console.log('✅ Audio track playing for', participant.identity))
+        //     .catch((err) => {
+        //       console.error('❌ Audio autoplay failed:', err);
+        //       setError('Please click anywhere to enable audio');
+        //       const playOnClick = () => {
+        //         audioEl.play()
+        //           .then(() => {
+        //             console.log('✅ Audio started after user interaction');
+        //             setError(null);
+        //             document.removeEventListener('click', playOnClick);
+        //           })
+        //           .catch((e) => console.error('Audio play failed after click:', e));
+        //       };
+        //       document.addEventListener('click', playOnClick, { once: true });
+        //     });
+        // }
+
         if (track.kind === Track.Kind.Audio) {
-          // Remove any existing audio element for this participant
-          const existingAudio = document.querySelector(
-            `audio[data-participant="${participant.identity}"]`
-          );
-          if (existingAudio) {
-            existingAudio.remove();
-          }
+  console.log('🎵 Audio track received from', participant.identity);
+  
+  // Remove any existing audio element for this participant
+  const existingAudio = document.querySelector(
+    `audio[data-participant="${participant.identity}"]`
+  );
+  if (existingAudio) {
+    console.log('Removing existing audio element');
+    existingAudio.remove();
+  }
 
-          const audioEl = document.createElement('audio');
-          audioEl.autoplay = true;
-          audioEl.playsInline = true;
-          audioEl.muted = false;
-          audioEl.volume = 1.0;
-          audioEl.dataset.participant = participant.identity;
+  const audioEl = document.createElement('audio');
+  audioEl.autoplay = true;
+  audioEl.playsInline = true;
+  audioEl.muted = false;
+  audioEl.volume = 1.0;
+  audioEl.dataset.participant = participant.identity;
 
-          track.attach(audioEl);
-          document.body.appendChild(audioEl);
+  console.log('Attaching audio track to new audio element');
+  track.attach(audioEl);
+  document.body.appendChild(audioEl);
+  
+  console.log('Audio element created:', {
+    muted: audioEl.muted,
+    volume: audioEl.volume,
+    autoplay: audioEl.autoplay,
+    srcObject: audioEl.srcObject
+  });
 
-          audioEl.play()
-            .then(() => console.log('✅ Audio track playing for', participant.identity))
-            .catch((err) => {
-              console.error('❌ Audio autoplay failed:', err);
-              setError('Please click anywhere to enable audio');
-              const playOnClick = () => {
-                audioEl.play()
-                  .then(() => {
-                    console.log('✅ Audio started after user interaction');
-                    setError(null);
-                    document.removeEventListener('click', playOnClick);
-                  })
-                  .catch((e) => console.error('Audio play failed after click:', e));
-              };
-              document.addEventListener('click', playOnClick, { once: true });
-            });
-        }
+  audioEl.play()
+    .then(() => {
+      console.log('✅ Audio track PLAYING for', participant.identity);
+      console.log('Audio element state:', {
+        paused: audioEl.paused,
+        muted: audioEl.muted,
+        volume: audioEl.volume
+      });
+    })
+    .catch((err) => {
+      console.error('❌ Audio autoplay failed:', err.name, err.message);
+      alert('Click anywhere on the screen to enable audio!');
+      
+      const playOnClick = () => {
+        console.log('User clicked, attempting audio play...');
+        audioEl.play()
+          .then(() => {
+            console.log('✅ Audio started after user interaction');
+            document.removeEventListener('click', playOnClick);
+            document.removeEventListener('touchstart', playOnClick);
+          })
+          .catch((e) => console.error('Audio play failed after click:', e));
+      };
+      
+      document.addEventListener('click', playOnClick, { once: true });
+      document.addEventListener('touchstart', playOnClick, { once: true });
+    });
+}
       });
 
       room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {

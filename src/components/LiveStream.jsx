@@ -294,6 +294,30 @@ const LiveScreen = () => {
         }
       });
 
+      // setTimeout(() => {
+      //   if (!cameraTrackReceived && videoRef.current && streamRef.current) {
+      //     console.warn('LiveKit camera track not received, falling back to getUserMedia stream');
+      //     videoRef.current.srcObject = streamRef.current;
+      //     videoRef.current.muted = true;
+      //     videoRef.current.play().catch((err) => {
+      //       console.warn('Fallback video autoplay failed:', err);
+      //     });
+      //   }
+
+      //   if (!micTrackReceived) {
+      //     const isMicEnabled = room.localParticipant.isMicrophoneEnabled;
+      //     console.log('Microphone enabled state:', isMicEnabled);
+      //     console.log('Published tracks:', Array.from(room.localParticipant.trackPublications.values()));
+      //     if (!isMicEnabled) {
+      //       console.error('❌ Microphone track not published');
+      //       alert('Your mic did not connect. Please check permissions and retry.');
+      //     } else {
+      //       console.log('✅ Microphone is enabled (may have published late)');
+      //       setMicTrackReceived(true);
+      //     }
+      //   }
+      // }, 5000);
+
       setTimeout(() => {
         if (!cameraTrackReceived && videoRef.current && streamRef.current) {
           console.warn('LiveKit camera track not received, falling back to getUserMedia stream');
@@ -306,18 +330,36 @@ const LiveScreen = () => {
 
         if (!micTrackReceived) {
           const isMicEnabled = room.localParticipant.isMicrophoneEnabled;
-          console.log('Microphone enabled state:', isMicEnabled);
-          console.log('Published tracks:', Array.from(room.localParticipant.trackPublications.values()));
+          const publishedTracks = Array.from(room.localParticipant.trackPublications.values());
+
+          console.log('=== MICROPHONE DEBUG ===');
+          console.log('Microphone enabled:', isMicEnabled);
+          console.log('Total published tracks:', publishedTracks.length);
+
+          publishedTracks.forEach((pub, idx) => {
+            console.log(`Track ${idx + 1}:`, {
+              source: pub.source,
+              kind: pub.kind,
+              trackSid: pub.trackSid,
+              isMuted: pub.isMuted,
+              track: pub.track
+            });
+          });
+
+          // Check specifically for microphone track
+          const micPub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+          console.log('Microphone publication:', micPub);
+          console.log('=== END DEBUG ===');
+
           if (!isMicEnabled) {
             console.error('❌ Microphone track not published');
             alert('Your mic did not connect. Please check permissions and retry.');
           } else {
-            console.log('✅ Microphone is enabled (may have published late)');
+            console.log('✅ Microphone is enabled and published');
             setMicTrackReceived(true);
           }
         }
       }, 5000);
-
       setIsStreaming(true);
 
       socketRef.current.emit('join-stream', {
