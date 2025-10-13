@@ -447,43 +447,74 @@ const LiveScreen = () => {
           }
         }
 
-        if (publication.source === Track.Source.Microphone) {
-  console.log('Microphone track published ✅');
-  micTrackReceived = true;
+        //         if (publication.source === Track.Source.Microphone) {
+        //   console.log('Microphone track published ✅');
+        //   micTrackReceived = true;
 
-  const localAudioTrack = publication.track;
-  if (localAudioTrack && localAudioTrack.mediaStreamTrack && audioRef.current) {
-    console.log('Attaching local microphone to hidden audio element...');
-    const audioStream = new MediaStream([localAudioTrack.mediaStreamTrack]);
-    audioRef.current.srcObject = audioStream;
-    audioRef.current.muted = true; // Prevent echo feedback
-    audioRef.current
-      .play()
-      .then(() => console.log('Hidden audio element is playing mic track'))
-      .catch((err) => console.warn('Autoplay failed for audio element:', err));
-  }
-}
+        //   const localAudioTrack = publication.track;
+        //   if (localAudioTrack && localAudioTrack.mediaStreamTrack && audioRef.current) {
+        //     console.log('Attaching local microphone to hidden audio element...');
+        //     const audioStream = new MediaStream([localAudioTrack.mediaStreamTrack]);
+        //     audioRef.current.srcObject = audioStream;
+        //     audioRef.current.muted = true; // Prevent echo feedback
+        //     audioRef.current
+        //       .play()
+        //       .then(() => console.log('Hidden audio element is playing mic track'))
+        //       .catch((err) => console.warn('Autoplay failed for audio element:', err));
+        //   }
+        // }
+
+        if (publication.source === Track.Source.Microphone) {
+          console.log('✅ Microphone track published successfully');
+          micTrackReceived = true;
+        }
 
       });
 
       // Fallback for video if track not received
-      setTimeout(() => {
-        if (!cameraTrackReceived && videoRef.current && streamRef.current) {
-          console.warn('LiveKit track not received, falling back to getUserMedia stream');
-          videoRef.current.srcObject = streamRef.current;
-          videoRef.current.muted = false;
-          videoRef.current.play().catch((err) => {
-            console.warn('Fallback video autoplay failed, retrying muted:', err);
-            videoRef.current.muted = true;
-            videoRef.current.play();
-          });
-        }
+      // setTimeout(() => {
+      //   if (!cameraTrackReceived && videoRef.current && streamRef.current) {
+      //     console.warn('LiveKit track not received, falling back to getUserMedia stream');
+      //     videoRef.current.srcObject = streamRef.current;
+      //     videoRef.current.muted = false;
+      //     videoRef.current.play().catch((err) => {
+      //       console.warn('Fallback video autoplay failed, retrying muted:', err);
+      //       videoRef.current.muted = true;
+      //       videoRef.current.play();
+      //     });
+      //   }
 
-        if (!micTrackReceived) {
-          console.warn('⚠️ Microphone track not published — viewers will not hear audio.');
-          alert('Your mic did not connect. Please check permissions and retry.');
-        }
-      }, 3000);
+      //   if (!micTrackReceived) {
+      //     console.warn('⚠️ Microphone track not published — viewers will not hear audio.');
+      //     alert('Your mic did not connect. Please check permissions and retry.');
+      //   }
+      // }, 3000);
+
+      // Fallback check with longer timeout
+setTimeout(() => {
+  if (!cameraTrackReceived && videoRef.current && streamRef.current) {
+    console.warn('LiveKit camera track not received, falling back to getUserMedia stream');
+    videoRef.current.srcObject = streamRef.current;
+    videoRef.current.muted = false;
+    videoRef.current.play().catch((err) => {
+      console.warn('Fallback video autoplay failed, retrying muted:', err);
+      videoRef.current.muted = true;
+      videoRef.current.play();
+    });
+  }
+
+  // Check if microphone is actually enabled in LiveKit
+  if (!micTrackReceived) {
+    const isMicEnabled = room.localParticipant.isMicrophoneEnabled;
+    if (!isMicEnabled) {
+      console.error('❌ Microphone track not published');
+      alert('Your mic did not connect. Please check permissions and retry.');
+    } else {
+      console.log('✅ Microphone is enabled (may have published late)');
+      micTrackReceived = true; // Update the flag
+    }
+  }
+}, 5000); // Increased to 5 seconds
 
       setIsStreaming(true);
 
@@ -689,9 +720,9 @@ const LiveScreen = () => {
           <h1 className="text-xl font-bold text-center">Go LIVE</h1>
           <div className="text-center mt-1">
             <span className={`text-xs px-2 py-1 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500/20 text-green-400' :
-                connectionStatus === 'connecting' ? 'bg-yellow-500/20 text-yellow-400' :
-                  connectionStatus === 'error' ? 'bg-red-500/20 text-red-400' :
-                    'bg-gray-500/20 text-gray-400'
+              connectionStatus === 'connecting' ? 'bg-yellow-500/20 text-yellow-400' :
+                connectionStatus === 'error' ? 'bg-red-500/20 text-red-400' :
+                  'bg-gray-500/20 text-gray-400'
               }`}>
               {connectionStatus === 'connected' ? '🟢 Ready to go live' :
                 connectionStatus === 'connecting' ? '🟡 Starting stream...' :
@@ -1096,8 +1127,8 @@ const LiveScreen = () => {
           }
         }
       `}</style>
-     {/* Hidden audio element for mic verification */}
-<audio ref={audioRef} autoPlay playsInline muted hidden />
+      {/* Hidden audio element for mic verification */}
+      {/* <audio ref={audioRef} autoPlay playsInline muted hidden /> */}
 
     </div>
   );
