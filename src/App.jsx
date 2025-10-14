@@ -30,6 +30,8 @@ import FollowRequestsScreen from "./components/FollowRequestScreen.jsx";
 import PointsWithdrawalScreen from "./components/PointsWithdrawalScreen.jsx";
 import LiveScreenBothCode from './components/LiveStream.jsx';
 import LiveStreamsListing from './components/LiveStream.jsx';
+import HostLiveStream from "./components/HostLiveStream.jsx";
+import ViewerLiveStream from "./components/ViewerLiveStream.jsx";
 
 // --------------------
 // Bottom Navigation
@@ -216,6 +218,8 @@ const App = () => {
           <Route path="/live-browse" element={<ProtectedRoute><LiveBrowse /></ProtectedRoute>} />
           <Route path="/live/:streamId" element={<LiveViewer />} />
           <Route path="/live-streams" element={<ProtectedRoute>< LiveStreamsListing /></ProtectedRoute>} />
+          <Route path="/host-live-stream" element={<ProtectedRoute>< HostLiveStream /></ProtectedRoute>} />
+          <Route path="/viewer-live-stream" element={<ProtectedRoute>< ViewerLiveStream /></ProtectedRoute>} />
 
           {/* <Route path="/live-host-stream" element={<ProtectedRoute>< LiveScreenBothCode /></ProtectedRoute>} /> */}
 
