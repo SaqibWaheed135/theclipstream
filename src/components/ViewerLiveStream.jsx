@@ -402,14 +402,8 @@
 // };
 
 // export default ViewerLiveStream;
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Users, Heart, MessageCircle, Send, X } from 'lucide-react';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
-
-// Initialize Stripe with your publishable key
-const stripePromise = loadStripe('your_stripe_publishable_key_here'); // Replace with your Stripe publishable key
 
 let Room, RoomEvent, Track;
 
@@ -428,131 +422,89 @@ const loadLiveKit = async () => {
 
 const API_URL = 'https://theclipstream-backend.onrender.com/api';
 
-// Payment Form Component
-const PaymentForm = ({ product, streamId, onClose, setError }) => {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [paymentLoading, setPaymentLoading] = useState(false);
-  const [paymentError, setPaymentError] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
+// Checkout Modal Component
+const CheckoutModal = ({ product, streamId, onClose, setError, userCoinBalance }) => {
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [purchaseError, setPurchaseError] = useState('');
 
-  useEffect(() => {
-    // Fetch PaymentIntent client secret from backend
-    const fetchPaymentIntent = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${API_URL}/live/${streamId}/create-payment-intent`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` })
-          },
-          body: JSON.stringify({ productIndex: product.index, amount: product.price * 100 }) // Amount in cents
-        });
-        const data = await response.json();
-        if (response.ok) {
-          setClientSecret(data.clientSecret);
-        } else {
-          setPaymentError(data.msg || 'Failed to initialize payment');
-        }
-      } catch (err) {
-        setPaymentError('Failed to initialize payment');
-      }
-    };
-    fetchPaymentIntent();
-  }, [streamId, product.index, product.price]);
+  // Assume $1 = 100 coins for display purposes; actual conversion handled by backend
+  const coinCost = Math.ceil(product.price * 100);
 
-  const handlePayment = async (e) => {
+  const handlePurchase = async (e) => {
     e.preventDefault();
-    if (!stripe || !elements || !clientSecret) return;
-
-    setPaymentLoading(true);
-    setPaymentError('');
+    setPurchaseLoading(true);
+    setPurchaseError('');
 
     try {
-      const result = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: elements.getElement(CardElement),
-        }
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/live/${streamId}/purchase-with-coins`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        },
+        body: JSON.stringify({ productIndex: product.index, coinCost })
       });
 
-      if (result.error) {
-        setPaymentError(result.error.message);
-        setPaymentLoading(false);
-        return;
-      }
-
-      if (result.paymentIntent.status === 'succeeded') {
-        // Place order after successful payment
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${API_URL}/live/${streamId}/place-order`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` })
-          },
-          body: JSON.stringify({ productIndex: product.index })
-        });
-
-        if (response.ok) {
-          onClose();
-          setError('Order placed successfully!');
-          setTimeout(() => setError(''), 3000);
-        } else {
-          const data = await response.json();
-          setPaymentError(data.msg || 'Failed to place order');
-        }
+      const data = await response.json();
+      if (response.ok) {
+        onClose();
+        setError('Purchase successful! Coins credited to the live room.');
+        setTimeout(() => setError(''), 3000);
+      } else {
+        setPurchaseError(data.msg || 'Failed to complete purchase');
       }
     } catch (err) {
-      setPaymentError('Payment failed: ' + err.message);
+      setPurchaseError('Purchase failed: ' + err.message);
     } finally {
-      setPaymentLoading(false);
+      setPurchaseLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handlePayment} className="space-y-4">
-      <div>
-        <h4 className="font-semibold text-lg">{product.name}</h4>
-        <p className="text-gray-400">{product.description}</p>
-        <p className="font-bold text-lg mt-2">${product.price}</p>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-semibold">Checkout</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        <form onSubmit={handlePurchase} className="space-y-4">
+          <div>
+            <h4 className="font-semibold text-lg">{product.name}</h4>
+            <p className="text-gray-400">{product.description}</p>
+            <p className="font-bold text-lg mt-2">${product.price} ({coinCost} coins)</p>
+            <p className="text-sm text-gray-400 mt-1">Your balance: {userCoinBalance} coins</p>
+            {coinCost > userCoinBalance && (
+              <p className="text-red-500 text-sm mt-2">Insufficient coins. Please top up your account.</p>
+            )}
+          </div>
+          {purchaseError && (
+            <div className="text-red-500 text-sm">{purchaseError}</div>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-gray-600 hover:bg-gray-700 py-2 rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={purchaseLoading || coinCost > userCoinBalance}
+              className="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed"
+            >
+              {purchaseLoading ? 'Processing...' : 'Confirm Purchase'}
+            </button>
+          </div>
+        </form>
       </div>
-      <div className="bg-gray-700 p-4 rounded-lg">
-        <CardElement
-          options={{
-            style: {
-              base: {
-                color: '#ffffff',
-                fontSize: '16px',
-                '::placeholder': { color: '#a0aec0' },
-                backgroundColor: '#2d3748',
-                padding: '10px',
-              },
-              invalid: { color: '#e53e3e' }
-            }
-          }}
-        />
-      </div>
-      {paymentError && (
-        <div className="text-red-500 text-sm">{paymentError}</div>
-      )}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex-1 bg-gray-600 hover:bg-gray-700 py-2 rounded-lg"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={!stripe || !clientSecret || paymentLoading}
-          className="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed"
-        >
-          {paymentLoading ? 'Processing...' : 'Pay Now'}
-        </button>
-      </div>
-    </form>
+    </div>
   );
 };
 
@@ -569,6 +521,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
   const [products, setProducts] = useState([]);
   const [showCartModal, setShowCartModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [userCoinBalance, setUserCoinBalance] = useState(0);
 
   const commentsEndRef = useRef(null);
 
@@ -579,6 +532,27 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
         fetchStream();
       }
     });
+
+    // Fetch user's coin balance
+    const fetchUserCoinBalance = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_URL}/user/coin-balance`, {
+          headers: {
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          }
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setUserCoinBalance(data.balance || 0);
+        } else {
+          console.error('Failed to fetch coin balance:', data.msg);
+        }
+      } catch (err) {
+        console.error('Error fetching coin balance:', err);
+      }
+    };
+    fetchUserCoinBalance();
 
     return () => {
       if (liveKitRoom) {
@@ -789,29 +763,14 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
         </div>
       )}
 
-      {/* Cart Modal */}
       {showCartModal && selectedProduct && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold">Checkout</h3>
-              <button
-                onClick={() => setShowCartModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <Elements stripe={stripePromise}>
-              <PaymentForm
-                product={selectedProduct}
-                streamId={streamId}
-                onClose={() => setShowCartModal(false)}
-                setError={setError}
-              />
-            </Elements>
-          </div>
-        </div>
+        <CheckoutModal
+          product={selectedProduct}
+          streamId={streamId}
+          onClose={() => setShowCartModal(false)}
+          setError={setError}
+          userCoinBalance={userCoinBalance}
+        />
       )}
 
       <div className="max-w-6xl mx-auto p-4">
@@ -904,10 +863,15 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
                     {p.imageUrl && <img src={p.imageUrl} alt={p.name} className="w-full h-32 object-cover rounded mb-2" />}
                     <h4 className="font-semibold">{p.name}</h4>
                     <p className="text-gray-400 mb-2">{p.description}</p>
-                    <p className="font-bold mb-2">${p.price}</p>
+                    <p className="font-bold mb-2">${p.price} ({Math.ceil(p.price * 100)} coins)</p>
                     {p.type === 'product' ? (
                       <button 
                         onClick={() => {
+                          const token = localStorage.getItem('token');
+                          if (!token) {
+                            setError('Please log in to purchase');
+                            return;
+                          }
                           setSelectedProduct({ ...p, index: i });
                           setShowCartModal(true);
                         }}
