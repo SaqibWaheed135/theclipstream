@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Radio, Users, X, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { Camera, Radio, Users, X, Mic, MicOff, Video, VideoOff, MessageCircle, Heart } from 'lucide-react';
 
-let Room, RoomEvent, Track;
+let Room, RoomEvent, Track, DataPacket_Kind;
 
 const loadLiveKit = async () => {
   try {
@@ -9,6 +9,7 @@ const loadLiveKit = async () => {
     Room = livekit.Room;
     RoomEvent = livekit.RoomEvent;
     Track = livekit.Track;
+    DataPacket_Kind = livekit.DataPacket_Kind;
     return true;
   } catch (err) {
     console.error('LiveKit not installed. Run: npm install livekit-client');
@@ -31,9 +32,12 @@ const HostLiveStream = ({ onBack }) => {
   const [localStream, setLocalStream] = useState(null);
   const [liveKitRoom, setLiveKitRoom] = useState(null);
   const [liveKitReady, setLiveKitReady] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [hearts, setHearts] = useState([]);
   
   const videoRef = useRef(null);
   const localVideoRef = useRef(null);
+  const commentsEndRef = useRef(null);
 
   useEffect(() => {
     loadLiveKit().then(setLiveKitReady);
@@ -53,6 +57,12 @@ const HostLiveStream = ({ onBack }) => {
       startCameraPreview();
     }
   }, [isLive]);
+
+  useEffect(() => {
+    if (commentsEndRef.current) {
+      commentsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [comments]);
 
   const startCameraPreview = async () => {
     try {
@@ -140,6 +150,44 @@ const HostLiveStream = ({ onBack }) => {
       await room.connect(data.roomUrl, data.publishToken);
       console.log('✅ Connected to LiveKit room');
 
+      // Listen for data messages from viewers
+      room.on(RoomEvent.DataReceived, (payload, participant) => {
+        const decoder = new TextDecoder();
+        const message = JSON.parse(decoder.decode(payload));
+        
+        console.log('📨 Data received from', participant?.identity, message);
+        
+        if (message.type === 'comment') {
+          setComments(prev => [...prev, {
+            id: Date.now() + Math.random(),
+            username: participant?.identity || 'Viewer',
+            text: message.text,
+            timestamp: new Date()
+          }]);
+        } else if (message.type === 'heart') {
+          const heartId = Date.now() + Math.random();
+          setHearts(prev => [...prev, { 
+            id: heartId, 
+            x: Math.random() * 80 + 10,
+            from: participant?.identity 
+          }]);
+          setTimeout(() => {
+            setHearts(prev => prev.filter(h => h.id !== heartId));
+          }, 3000);
+        }
+      });
+
+      // Track viewer count
+      room.on(RoomEvent.ParticipantConnected, () => {
+        setViewerCount(room.remoteParticipants.size);
+        console.log('👤 Viewer joined. Total:', room.remoteParticipants.size);
+      });
+
+      room.on(RoomEvent.ParticipantDisconnected, () => {
+        setViewerCount(room.remoteParticipants.size);
+        console.log('👋 Viewer left. Total:', room.remoteParticipants.size);
+      });
+
       await room.localParticipant.enableCameraAndMicrophone();
       console.log('✅ Camera and microphone enabled');
 
@@ -186,6 +234,7 @@ const HostLiveStream = ({ onBack }) => {
       }, 1000);
 
       setLiveKitRoom(room);
+      setViewerCount(room.remoteParticipants.size);
       setIsLive(true);
       
     } catch (err) {
@@ -230,6 +279,8 @@ const HostLiveStream = ({ onBack }) => {
       setStreamData(null);
       setTitle('');
       setDescription('');
+      setComments([]);
+      setHearts([]);
       
       onBack();
     } catch (err) {
@@ -268,7 +319,14 @@ const HostLiveStream = ({ onBack }) => {
   if (isLive) {
     return (
       <div className="min-h-screen bg-gray-900 text-white p-4">
-        <div className="max-w-4xl mx-auto">
+        <style>{`
+          @keyframes float-up {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-100vh) scale(1.5); opacity: 0; }
+          }
+        `}</style>
+
+        <div className="max-w-6xl mx-auto">
           <div className="bg-gray-800 rounded-lg p-4 mb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -292,51 +350,107 @@ const HostLiveStream = ({ onBack }) => {
             <h2 className="text-xl font-bold mt-3">{streamData?.stream?.title}</h2>
           </div>
 
-          <div className="bg-black rounded-lg aspect-video mb-4 relative overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-              style={{ position: 'absolute', top: 0, left: 0, zIndex: 2 }}
-            />
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-              style={{ position: 'absolute', top: 0, left: 0, zIndex: 1 }}
-            />
-            {!isCameraOn && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900" style={{ zIndex: 10 }}>
-                <VideoOff className="w-16 h-16 text-gray-600" />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-3">
+              <div className="bg-black rounded-lg aspect-video mb-4 relative overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                  style={{ position: 'absolute', top: 0, left: 0, zIndex: 2 }}
+                />
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                  style={{ position: 'absolute', top: 0, left: 0, zIndex: 1 }}
+                />
+                {!isCameraOn && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900" style={{ zIndex: 10 }}>
+                    <VideoOff className="w-16 h-16 text-gray-600" />
+                  </div>
+                )}
+
+                {/* Hearts Animation */}
+                {hearts.map((heart) => (
+                  <div
+                    key={heart.id}
+                    className="absolute pointer-events-none text-3xl"
+                    style={{
+                      left: `${heart.x}%`,
+                      bottom: '0',
+                      animation: 'float-up 3s ease-out forwards',
+                      zIndex: 20
+                    }}
+                  >
+                    ❤️
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
 
-          <div className="bg-gray-800 rounded-lg p-4 mb-4 flex items-center justify-center gap-4">
-            <button
-              onClick={toggleCamera}
-              className={`p-4 rounded-full transition-colors ${isCameraOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'}`}
-            >
-              {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
-            </button>
-            <button
-              onClick={toggleMic}
-              className={`p-4 rounded-full transition-colors ${isMicOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'}`}
-            >
-              {isMicOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
-            </button>
-          </div>
+              <div className="bg-gray-800 rounded-lg p-4 mb-4 flex items-center justify-center gap-4">
+                <button
+                  onClick={toggleCamera}
+                  className={`p-4 rounded-full transition-colors ${isCameraOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'}`}
+                >
+                  {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+                </button>
+                <button
+                  onClick={toggleMic}
+                  className={`p-4 rounded-full transition-colors ${isMicOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'}`}
+                >
+                  {isMicOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
+                </button>
+              </div>
 
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="font-semibold mb-2">Stream Details</h3>
-            <div className="space-y-2 text-sm">
-              <p className="text-gray-400">Stream ID: <span className="text-white font-mono text-xs">{streamData?.streamId}</span></p>
-              <p className="text-gray-400">Status: <span className="text-green-400">● Live</span></p>
-              <p className="text-gray-400">Room: <span className="text-white">Connected</span></p>
+              <div className="bg-gray-800 rounded-lg p-4">
+                <h3 className="font-semibold mb-2">Stream Details</h3>
+                <div className="space-y-2 text-sm">
+                  <p className="text-gray-400">Stream ID: <span className="text-white font-mono text-xs">{streamData?.streamId}</span></p>
+                  <p className="text-gray-400">Status: <span className="text-green-400">● Live</span></p>
+                  <p className="text-gray-400">Room: <span className="text-white">Connected</span></p>
+                  <p className="text-gray-400">Active Viewers: <span className="text-white">{viewerCount}</span></p>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Chat Panel */}
+            <div className="lg:col-span-1">
+              <div className="bg-gray-800 rounded-lg h-[600px] flex flex-col">
+                <div className="p-4 border-b border-gray-700">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5" />
+                    Live Chat
+                  </h3>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {comments.map((c) => (
+                    <div key={c.id} className="text-sm">
+                      <span className="font-semibold text-blue-400">@{c.username}: </span>
+                      <span className="text-gray-300">{c.text}</span>
+                    </div>
+                  ))}
+                  {comments.length === 0 && (
+                    <div className="text-center text-gray-500 mt-20">
+                      <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                      <p className="text-sm">Waiting for comments...</p>
+                    </div>
+                  )}
+                  <div ref={commentsEndRef} />
+                </div>
+
+                <div className="p-4 border-t border-gray-700">
+                  <div className="flex items-center gap-2 text-gray-400 text-xs">
+                    <Heart className="w-4 h-4 text-pink-500" />
+                    <span>Viewers can send hearts and comments</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
