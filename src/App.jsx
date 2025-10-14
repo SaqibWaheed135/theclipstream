@@ -5,6 +5,7 @@ import {
   Navigate,
   useLocation,
   useNavigate,
+  useParams,
 } from "react-router-dom";
 import AdBanner from "./components/AdBanner.jsx";
 
@@ -57,8 +58,9 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
             <button
               key={item.id}
               onClick={() => navigate(item.path)}
-              className={`flex-1 py-2 px-1 flex flex-col items-center justify-center min-h-[60px] ${isUpload ? "relative" : ""
-                }`}
+              className={`flex-1 py-2 px-1 flex flex-col items-center justify-center min-h-[60px] ${
+                isUpload ? "relative" : ""
+              }`}
             >
               {isUpload ? (
                 <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center mb-1">
@@ -66,17 +68,19 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
                 </div>
               ) : (
                 <Icon
-                  className={`w-6 h-6 mb-1 ${isActive
-                    ? item.id === "live"
-                      ? "text-red-500"
-                      : "text-white"
-                    : "text-gray-400"
-                    }`}
+                  className={`w-6 h-6 mb-1 ${
+                    isActive
+                      ? item.id === "live"
+                        ? "text-red-500"
+                        : "text-white"
+                      : "text-gray-400"
+                  }`}
                 />
               )}
               <span
-                className={`text-xs ${isActive && !isUpload ? "text-white" : "text-gray-400"
-                  }`}
+                className={`text-xs ${
+                  isActive && !isUpload ? "text-white" : "text-gray-400"
+                }`}
               >
                 {item.label}
               </span>
@@ -116,6 +120,14 @@ const ProtectedRoute = ({ children }) => {
 };
 
 // --------------------
+// Wrapper for ViewerLiveStream to get streamId from URL
+// --------------------
+const ViewerLiveStreamWrapper = ({ onBack }) => {
+  const { streamId } = useParams();
+  return <ViewerLiveStream streamId={streamId} onBack={onBack} />;
+};
+
+// --------------------
 // App Component
 // --------------------
 const App = () => {
@@ -124,8 +136,6 @@ const App = () => {
   const [currentScreen, setCurrentScreen] = useState(location.pathname);
   const [mode, setMode] = useState('select'); // 'select', 'host', 'viewer'
   const [streamId, setStreamId] = useState('');
-
-
 
   // 👇 State for install prompt (Android)
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -217,12 +227,26 @@ const App = () => {
           <Route path="/messages/:conversationId" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
           <Route path="/live-browse" element={<ProtectedRoute><LiveBrowse /></ProtectedRoute>} />
           <Route path="/live/:streamId" element={<LiveViewer />} />
-          <Route path="/live-streams" element={<ProtectedRoute>< LiveStreamsListing /></ProtectedRoute>} />
-          <Route path="/host-live-stream" element={<ProtectedRoute>< HostLiveStream /></ProtectedRoute>} />
-          <Route path="/viewer-live-stream" element={<ProtectedRoute>< ViewerLiveStream /></ProtectedRoute>} />
-
-          {/* <Route path="/live-host-stream" element={<ProtectedRoute>< LiveScreenBothCode /></ProtectedRoute>} /> */}
-
+          
+          {/* Updated Live Stream Routes */}
+          <Route path="/live-streams" element={
+            <ProtectedRoute>
+              <LiveStreamsListing 
+                onStartStream={() => navigate('/host-live-stream')}
+                onJoinStream={(streamId) => navigate(`/viewer-live-stream/${streamId}`)}
+              />
+            </ProtectedRoute>
+          } />
+          <Route path="/host-live-stream" element={
+            <ProtectedRoute>
+              <HostLiveStream onBack={() => navigate('/live-streams')} />
+            </ProtectedRoute>
+          } />
+          <Route path="/viewer-live-stream/:streamId" element={
+            <ProtectedRoute>
+              <ViewerLiveStreamWrapper onBack={() => navigate('/live-streams')} />
+            </ProtectedRoute>
+          } />
         </Routes>
       </main>
 
