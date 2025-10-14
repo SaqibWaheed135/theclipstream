@@ -405,6 +405,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Users, Heart, MessageCircle, Send, X } from 'lucide-react';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Initialize Stripe with your publishable key
+const stripePromise = loadStripe('your_stripe_publishable_key_here'); // Replace with your Stripe publishable key
 
 let Room, RoomEvent, Track;
 
@@ -423,6 +428,134 @@ const loadLiveKit = async () => {
 
 const API_URL = 'https://theclipstream-backend.onrender.com/api';
 
+// Payment Form Component
+const PaymentForm = ({ product, streamId, onClose, setError }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+
+  useEffect(() => {
+    // Fetch PaymentIntent client secret from backend
+    const fetchPaymentIntent = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_URL}/live/${streamId}/create-payment-intent`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          },
+          body: JSON.stringify({ productIndex: product.index, amount: product.price * 100 }) // Amount in cents
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setClientSecret(data.clientSecret);
+        } else {
+          setPaymentError(data.msg || 'Failed to initialize payment');
+        }
+      } catch (err) {
+        setPaymentError('Failed to initialize payment');
+      }
+    };
+    fetchPaymentIntent();
+  }, [streamId, product.index, product.price]);
+
+  const handlePayment = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements || !clientSecret) return;
+
+    setPaymentLoading(true);
+    setPaymentError('');
+
+    try {
+      const result = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: elements.getElement(CardElement),
+        }
+      });
+
+      if (result.error) {
+        setPaymentError(result.error.message);
+        setPaymentLoading(false);
+        return;
+      }
+
+      if (result.paymentIntent.status === 'succeeded') {
+        // Place order after successful payment
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_URL}/live/${streamId}/place-order`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          },
+          body: JSON.stringify({ productIndex: product.index })
+        });
+
+        if (response.ok) {
+          onClose();
+          setError('Order placed successfully!');
+          setTimeout(() => setError(''), 3000);
+        } else {
+          const data = await response.json();
+          setPaymentError(data.msg || 'Failed to place order');
+        }
+      }
+    } catch (err) {
+      setPaymentError('Payment failed: ' + err.message);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handlePayment} className="space-y-4">
+      <div>
+        <h4 className="font-semibold text-lg">{product.name}</h4>
+        <p className="text-gray-400">{product.description}</p>
+        <p className="font-bold text-lg mt-2">${product.price}</p>
+      </div>
+      <div className="bg-gray-700 p-4 rounded-lg">
+        <CardElement
+          options={{
+            style: {
+              base: {
+                color: '#ffffff',
+                fontSize: '16px',
+                '::placeholder': { color: '#a0aec0' },
+                backgroundColor: '#2d3748',
+                padding: '10px',
+              },
+              invalid: { color: '#e53e3e' }
+            }
+          }}
+        />
+      </div>
+      {paymentError && (
+        <div className="text-red-500 text-sm">{paymentError}</div>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-1 bg-gray-600 hover:bg-gray-700 py-2 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!stripe || !clientSecret || paymentLoading}
+          className="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed"
+        >
+          {paymentLoading ? 'Processing...' : 'Pay Now'}
+        </button>
+      </div>
+    </form>
+  );
+};
+
 const ViewerLiveStream = ({ streamId, onBack }) => {
   const [stream, setStream] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -434,7 +567,9 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
   const [liveKitReady, setLiveKitReady] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [products, setProducts] = useState([]);
-  
+  const [showCartModal, setShowCartModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
   const commentsEndRef = useRef(null);
 
   useEffect(() => {
@@ -470,7 +605,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
 
       console.log('Stream fetched:', data);
       setStream(data);
-      setProducts(data.products || []);
+      setProducts(data.products.map((p, index) => ({ ...p, index })) || []);
       
       if (data.viewerToken && data.roomUrl) {
         await connectToLiveKit(data.roomUrl, data.viewerToken);
@@ -654,6 +789,31 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
         </div>
       )}
 
+      {/* Cart Modal */}
+      {showCartModal && selectedProduct && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">Checkout</h3>
+              <button
+                onClick={() => setShowCartModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <Elements stripe={stripePromise}>
+              <PaymentForm
+                product={selectedProduct}
+                streamId={streamId}
+                onClose={() => setShowCartModal(false)}
+                setError={setError}
+              />
+            </Elements>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto p-4">
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
@@ -747,26 +907,9 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
                     <p className="font-bold mb-2">${p.price}</p>
                     {p.type === 'product' ? (
                       <button 
-                        onClick={async () => {
-                          try {
-                            const token = localStorage.getItem('token');
-                            const response = await fetch(`${API_URL}/live/${streamId}/place-order`, {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                                ...(token && { 'Authorization': `Bearer ${token}` })
-                              },
-                              body: JSON.stringify({ productIndex: i })
-                            });
-                            if (response.ok) {
-                              alert('Order placed successfully!');
-                            } else {
-                              const data = await response.json();
-                              setError(data.msg);
-                            }
-                          } catch (err) {
-                            setError('Failed to place order');
-                          }
+                        onClick={() => {
+                          setSelectedProduct({ ...p, index: i });
+                          setShowCartModal(true);
                         }}
                         className="w-full bg-green-600 hover:bg-green-700 py-2 rounded-lg font-semibold"
                       >
