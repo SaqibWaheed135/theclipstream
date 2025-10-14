@@ -28,7 +28,8 @@ import PointsRechargeScreen from "./components/PointsRechargeScreen.jsx";
 import NotificationsScreen from "./components/NotificationsScreen.jsx";
 import FollowRequestsScreen from "./components/FollowRequestScreen.jsx";
 import PointsWithdrawalScreen from "./components/PointsWithdrawalScreen.jsx";
-import LiveScreenBothCode from './components/LiveStream.jsx'
+import LiveScreenBothCode from './components/LiveStream.jsx';
+import LiveStreamsListing from './components/LiveStream.jsx';
 
 // --------------------
 // Bottom Navigation
@@ -64,10 +65,10 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
               ) : (
                 <Icon
                   className={`w-6 h-6 mb-1 ${isActive
-                      ? item.id === "live"
-                        ? "text-red-500"
-                        : "text-white"
-                      : "text-gray-400"
+                    ? item.id === "live"
+                      ? "text-red-500"
+                      : "text-white"
+                    : "text-gray-400"
                     }`}
                 />
               )}
@@ -122,7 +123,7 @@ const App = () => {
   const [mode, setMode] = useState('select'); // 'select', 'host', 'viewer'
   const [streamId, setStreamId] = useState('');
 
-  
+
 
   // 👇 State for install prompt (Android)
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -214,8 +215,10 @@ const App = () => {
           <Route path="/messages/:conversationId" element={<ProtectedRoute><MessagingScreen /></ProtectedRoute>} />
           <Route path="/live-browse" element={<ProtectedRoute><LiveBrowse /></ProtectedRoute>} />
           <Route path="/live/:streamId" element={<LiveViewer />} />
-          <Route path="/live-host-stream" element={<ProtectedRoute>< LiveScreenBothCode /></ProtectedRoute>} />
-         
+          <Route path="/live-streams" element={<ProtectedRoute>< LiveStreamsListing /></ProtectedRoute>} />
+
+          {/* <Route path="/live-host-stream" element={<ProtectedRoute>< LiveScreenBothCode /></ProtectedRoute>} /> */}
+
         </Routes>
       </main>
 
