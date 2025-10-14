@@ -38,7 +38,7 @@ const BottomNavigation = ({ currentScreen, navigate }) => {
     { id: "home", icon: Home, label: "Home", path: "/" },
     { id: "search", icon: Search, label: "Discover", path: "/search" },
     { id: "upload", icon: Plus, label: "Create", path: "/upload" },
-    { id: "live", icon: CircleDot, label: "LIVE", path: "/live-host-stream" },
+    { id: "live", icon: CircleDot, label: "LIVE", path: "/live-browse" },
     { id: "profile", icon: User, label: "Profile", path: "/profile" },
   ];
 
