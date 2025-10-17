@@ -535,6 +535,26 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
         initializeSocket();
       }
     });
+// Fetch user's coin balance
+    const fetchUserCoinBalance = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_URL}/live/user/coin-balance`, {
+          headers: {
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          }
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setUserCoinBalance(data.balance || 0);
+        } else {
+          console.error('Failed to fetch coin balance:', data.msg);
+        }
+      } catch (err) {
+        console.error('Error fetching coin balance:', err);
+      }
+    };
+    fetchUserCoinBalance();
 
     return () => {
       if (liveKitRoom) {
