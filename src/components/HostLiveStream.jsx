@@ -780,7 +780,7 @@ const HostLiveStream = ({ onBack }) => {
   //   }
   // }, [isLive, streamData?.streamId]);
 
-   useEffect(() => {
+  useEffect(() => {
     if (isLive && streamData?.streamId) {
       const newSocket = io(SOCKET_URL, {
         auth: {
@@ -879,7 +879,7 @@ const HostLiveStream = ({ onBack }) => {
   // };
 
   // Also add this new function to fetch and display orders with buyer info
-  const fetchInitialOrders = async () => {
+ const fetchInitialOrders = async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/live/${streamData.streamId}/orders`, {
