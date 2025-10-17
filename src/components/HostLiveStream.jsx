@@ -750,21 +750,100 @@ const HostLiveStream = ({ onBack }) => {
   }, [comments]);
 
   // Socket connection and listeners
-  useEffect(() => {
-    if (isLive && streamData?.streamId) {
-      const newSocket = io(SOCKET_URL);
+  // useEffect(() => {
+  //   if (isLive && streamData?.streamId) {
+  //     const newSocket = io(SOCKET_URL);
       
-      newSocket.emit('join-stream', { 
-        streamId: streamData.streamId, 
-        isStreamer: true 
+  //     newSocket.emit('join-stream', { 
+  //       streamId: streamData.streamId, 
+  //       isStreamer: true 
+  //     });
+
+  //     newSocket.on('new-order', (data) => {
+  //       setOrders(prev => [...prev, data.order]);
+  //     });
+
+  //     newSocket.on('coins-updated', (data) => {
+  //       setCoinBalance(data.coinBalance);
+  //     });
+
+  //     setSocket(newSocket);
+
+  //     // Fetch initial data
+  //     fetchInitialOrders();
+  //     setProducts(streamData.stream.products?.map((p, i) => ({ ...p, index: i })) || []);
+  //     setCoinBalance(streamData.stream.coinBalance || 0);
+
+  //     return () => {
+  //       newSocket.disconnect();
+  //     };
+  //   }
+  // }, [isLive, streamData?.streamId]);
+
+   useEffect(() => {
+    if (isLive && streamData?.streamId) {
+      const newSocket = io(SOCKET_URL, {
+        auth: {
+          token: localStorage.getItem('token')
+        }
+      });
+      
+      newSocket.on('connect', () => {
+        console.log('Socket connected');
+        
+        // Join the stream
+        newSocket.emit('join-stream', { 
+          streamId: streamData.streamId, 
+          isStreamer: true 
+        });
+
+        // Subscribe to earnings for this stream
+        newSocket.emit('subscribe-to-stream-earnings', {
+          streamId: streamData.streamId
+        });
       });
 
+      // Listen for new orders from viewers
       newSocket.on('new-order', (data) => {
-        setOrders(prev => [...prev, data.order]);
+        console.log('New order received:', data);
+        setOrders(prev => {
+          const orderExists = prev.some(o => 
+            o._id === data.order._id || 
+            (o.productIndex === data.order.productIndex && 
+             o.buyer === data.order.buyer)
+          );
+          return orderExists ? prev : [...prev, {
+            ...data.order,
+            buyerUsername: data.buyerUsername || data.order.buyer?.username
+          }];
+        });
+
+        // Update coin balance
+        if (data.totalEarnings !== undefined) {
+          setCoinBalance(data.totalEarnings);
+        }
       });
 
+      // Listen for coin updates
       newSocket.on('coins-updated', (data) => {
-        setCoinBalance(data.coinBalance);
+        console.log('Coins updated:', data);
+        if (data.streamId === streamData.streamId) {
+          setCoinBalance(data.coinBalance);
+          // Show a notification
+          setError(`Earned ${data.earnedAmount} coins from a purchase!`);
+          setTimeout(() => setError(''), 3000);
+        }
+      });
+
+      // Listen for product updates
+      newSocket.on('product-list-updated', (data) => {
+        console.log('Product list updated:', data);
+        setProducts(data.products || []);
+      });
+
+      // Error handling
+      newSocket.on('error', (error) => {
+        console.error('Socket error:', error);
       });
 
       setSocket(newSocket);
@@ -772,7 +851,7 @@ const HostLiveStream = ({ onBack }) => {
       // Fetch initial data
       fetchInitialOrders();
       setProducts(streamData.stream.products?.map((p, i) => ({ ...p, index: i })) || []);
-      setCoinBalance(streamData.stream.coinBalance || 0);
+      setCoinBalance(streamData.stream.points || 0);
 
       return () => {
         newSocket.disconnect();
@@ -780,6 +859,26 @@ const HostLiveStream = ({ onBack }) => {
     }
   }, [isLive, streamData?.streamId]);
 
+  
+
+  // const fetchInitialOrders = async () => {
+  //   try {
+  //     const token = localStorage.getItem('token');
+  //     const response = await fetch(`${API_URL}/live/${streamData.streamId}/orders`, {
+  //       headers: {
+  //         ...(token && { 'Authorization': `Bearer ${token}` })
+  //       }
+  //     });
+  //     const data = await response.json();
+  //     if (response.ok) {
+  //       setOrders(data.orders.map(o => ({ ...o, buyerUsername: o.buyer.username })) || []);
+  //     }
+  //   } catch (err) {
+  //     console.error('Failed to fetch initial orders:', err);
+  //   }
+  // };
+
+  // Also add this new function to fetch and display orders with buyer info
   const fetchInitialOrders = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -790,13 +889,18 @@ const HostLiveStream = ({ onBack }) => {
       });
       const data = await response.json();
       if (response.ok) {
-        setOrders(data.orders.map(o => ({ ...o, buyerUsername: o.buyer.username })) || []);
+        // Map orders to include buyer username
+        const ordersWithBuyerInfo = data.orders.map(o => ({
+          ...o,
+          buyerUsername: o.buyer?.username || 'Unknown Buyer'
+        })) || [];
+        setOrders(ordersWithBuyerInfo);
       }
     } catch (err) {
       console.error('Failed to fetch initial orders:', err);
     }
   };
-
+  
   const startCameraPreview = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
