@@ -46,14 +46,14 @@
 //     link: ''
 //   });
 //   const [orders, setOrders] = useState([]);
-  
+
 //   const videoRef = useRef(null);
 //   const localVideoRef = useRef(null);
 //   const commentsEndRef = useRef(null);
 
 //   useEffect(() => {
 //     loadLiveKit().then(setLiveKitReady);
-    
+
 //     return () => {
 //       if (localStream) {
 //         localStream.getTracks().forEach(track => track.stop());
@@ -138,7 +138,7 @@
 //       });
 
 //       const data = await response.json();
-      
+
 //       if (!response.ok) {
 //         throw new Error(data.msg || 'Failed to create stream');
 //       }
@@ -166,9 +166,9 @@
 //       room.on(RoomEvent.DataReceived, (payload, participant) => {
 //         const decoder = new TextDecoder();
 //         const message = JSON.parse(decoder.decode(payload));
-        
+
 //         console.log('📨 Data received from', participant?.identity, message);
-        
+
 //         if (message.type === 'comment') {
 //           setComments(prev => [...prev, {
 //             id: Date.now() + Math.random(),
@@ -205,12 +205,12 @@
 
 //       room.on(RoomEvent.LocalTrackPublished, (publication) => {
 //         console.log('Track published:', publication.source);
-        
+
 //         if (publication.source === Track.Source.Camera) {
 //           const localVideoTrack = publication.track;
 //           if (localVideoTrack && localVideoTrack.mediaStreamTrack) {
 //             const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
-            
+
 //             if (videoRef.current) {
 //               videoRef.current.srcObject = mediaStream;
 //               videoRef.current.muted = true;
@@ -248,7 +248,7 @@
 //       setLiveKitRoom(room);
 //       setViewerCount(room.remoteParticipants.size);
 //       setIsLive(true);
-      
+
 //     } catch (err) {
 //       console.error('Error starting stream:', err);
 //       setError(err.message);
@@ -295,7 +295,7 @@
 //       setHearts([]);
 //       setProducts([]);
 //       setOrders([]);
-      
+
 //       onBack();
 //     } catch (err) {
 //       console.error('Error ending stream:', err);
@@ -489,7 +489,7 @@
 //                 >
 //                   Add
 //                 </button>
-                
+
 //                 <div className="mt-4">
 //                   <h4 className="font-semibold mb-2">Added Items</h4>
 //                   {products.map((p, i) => (
@@ -716,14 +716,14 @@ const HostLiveStream = ({ onBack }) => {
   const [orders, setOrders] = useState([]);
   const [coinBalance, setCoinBalance] = useState(0);
   const [socket, setSocket] = useState(null);
-  
+
   const videoRef = useRef(null);
   const localVideoRef = useRef(null);
   const commentsEndRef = useRef(null);
 
   useEffect(() => {
     loadLiveKit().then(setLiveKitReady);
-    
+
     return () => {
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
@@ -753,7 +753,7 @@ const HostLiveStream = ({ onBack }) => {
   // useEffect(() => {
   //   if (isLive && streamData?.streamId) {
   //     const newSocket = io(SOCKET_URL);
-      
+
   //     newSocket.emit('join-stream', { 
   //       streamId: streamData.streamId, 
   //       isStreamer: true 
@@ -780,65 +780,101 @@ const HostLiveStream = ({ onBack }) => {
   //   }
   // }, [isLive, streamData?.streamId]);
 
-   useEffect(() => {
+  useEffect(() => {
     if (isLive && streamData?.streamId) {
+      const token = localStorage.getItem('token');
       const newSocket = io(SOCKET_URL, {
         auth: {
-          token: localStorage.getItem('token')
+          token: token
         }
       });
-      
-      newSocket.on('connect', () => {
-        console.log('Socket connected');
-        
-        // Join the stream
-        newSocket.emit('join-stream', { 
-          streamId: streamData.streamId, 
-          isStreamer: true 
-        });
 
-        // Subscribe to earnings for this stream
-        newSocket.emit('subscribe-to-stream-earnings', {
-          streamId: streamData.streamId
+      newSocket.on('connect', () => {
+        console.log('Host socket connected');
+
+        // Join the stream
+        newSocket.emit('join-stream', {
+          streamId: streamData.streamId,
+          isStreamer: true
         });
       });
 
-      // Listen for new orders from viewers
+      // LISTEN FOR NEW ORDERS
       newSocket.on('new-order', (data) => {
-        console.log('New order received:', data);
+        console.log('🛍️ New order received:', data);
         setOrders(prev => {
-          const orderExists = prev.some(o => 
-            o._id === data.order._id || 
-            (o.productIndex === data.order.productIndex && 
-             o.buyer === data.order.buyer)
+          // Check if order already exists
+          const orderExists = prev.some(o =>
+            (o._id && o._id === data.order._id)
           );
-          return orderExists ? prev : [...prev, {
+          if (orderExists) return prev;
+
+          return [...prev, {
             ...data.order,
-            buyerUsername: data.buyerUsername || data.order.buyer?.username
+            buyerUsername: data.buyerUsername || data.order.buyer?.username,
+            productName: data.product?.name
           }];
         });
 
-        // Update coin balance
+        // UPDATE COIN BALANCE - THIS IS KEY
         if (data.totalEarnings !== undefined) {
-          setCoinBalance(data.totalEarnings);
+          console.log('💰 Updating coin balance to:', data.totalEarnings);
+          setCoinBalance(prev => {
+            console.log('Previous balance:', prev, 'New balance:', data.totalEarnings);
+            return data.totalEarnings;
+          });
         }
       });
 
-      // Listen for coin updates
+      // LISTEN FOR COIN UPDATES (backup method)
       newSocket.on('coins-updated', (data) => {
-        console.log('Coins updated:', data);
+        console.log('💵 Coins updated event:', data);
         if (data.streamId === streamData.streamId) {
+          console.log('Setting coin balance to:', data.coinBalance);
           setCoinBalance(data.coinBalance);
-          // Show a notification
-          setError(`Earned ${data.earnedAmount} coins from a purchase!`);
-          setTimeout(() => setError(''), 3000);
         }
       });
 
-      // Listen for product updates
-      newSocket.on('product-list-updated', (data) => {
-        console.log('Product list updated:', data);
-        setProducts(data.products || []);
+      // LISTEN FOR VIEWER JOINED
+      newSocket.on('viewer-joined', (data) => {
+        console.log('👁️ Viewer joined:', data);
+        setViewerCount(data.viewerCount);
+      });
+
+      // LISTEN FOR VIEWER LEFT
+      newSocket.on('viewer-left', (data) => {
+        console.log('👋 Viewer left:', data);
+        setViewerCount(data.viewerCount);
+      });
+
+      // LISTEN FOR STREAM ENDED
+      newSocket.on('stream-ended', (data) => {
+        console.log('Stream ended:', data);
+      });
+
+      // LISTEN FOR NEW COMMENTS
+      newSocket.on('new-comment', (data) => {
+        console.log('💬 New comment:', data);
+        setComments(prev => [...prev, {
+          id: Date.now() + Math.random(),
+          username: data.username || 'Anonymous',
+          text: data.text,
+          timestamp: new Date()
+        }]);
+      });
+
+      // LISTEN FOR HEARTS SENT
+      newSocket.on('heart-sent', () => {
+        console.log('❤️ Heart received');
+        // Add heart animation
+        const heartId = Date.now() + Math.random();
+        setHearts(prev => [...prev, {
+          id: heartId,
+          x: Math.random() * 80 + 10
+        }]);
+        setTimeout(() => {
+          setHearts(prev => prev.filter(h => h.id !== heartId));
+        }, 3000);
       });
 
       // Error handling
@@ -846,12 +882,20 @@ const HostLiveStream = ({ onBack }) => {
         console.error('Socket error:', error);
       });
 
+      newSocket.on('disconnect', () => {
+        console.log('Host socket disconnected');
+      });
+
       setSocket(newSocket);
 
       // Fetch initial data
       fetchInitialOrders();
-      setProducts(streamData.stream.products?.map((p, i) => ({ ...p, index: i })) || []);
-      setCoinBalance(streamData.stream.points || 0);
+      if (streamData.stream) {
+        setProducts(streamData.stream.products?.map((p, i) => ({ ...p, index: i })) || []);
+        // SET INITIAL COIN BALANCE
+        setCoinBalance(streamData.stream.points || 0);
+        console.log('Initial coin balance set to:', streamData.stream.points || 0);
+      }
 
       return () => {
         newSocket.disconnect();
@@ -859,7 +903,7 @@ const HostLiveStream = ({ onBack }) => {
     }
   }, [isLive, streamData?.streamId]);
 
-  
+
 
   // const fetchInitialOrders = async () => {
   //   try {
@@ -879,7 +923,10 @@ const HostLiveStream = ({ onBack }) => {
   // };
 
   // Also add this new function to fetch and display orders with buyer info
+  // 2. Update fetchInitialOrders to include points
   const fetchInitialOrders = async () => {
+    if (!streamData?.streamId) return;
+
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/live/${streamData.streamId}/orders`, {
@@ -889,7 +936,6 @@ const HostLiveStream = ({ onBack }) => {
       });
       const data = await response.json();
       if (response.ok) {
-        // Map orders to include buyer username
         const ordersWithBuyerInfo = data.orders.map(o => ({
           ...o,
           buyerUsername: o.buyer?.username || 'Unknown Buyer'
@@ -900,7 +946,7 @@ const HostLiveStream = ({ onBack }) => {
       console.error('Failed to fetch initial orders:', err);
     }
   };
-  
+
   const startCameraPreview = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -963,7 +1009,7 @@ const HostLiveStream = ({ onBack }) => {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.msg || 'Failed to create stream');
       }
@@ -991,9 +1037,9 @@ const HostLiveStream = ({ onBack }) => {
       room.on(RoomEvent.DataReceived, (payload, participant) => {
         const decoder = new TextDecoder();
         const message = JSON.parse(decoder.decode(payload));
-        
+
         console.log('📨 Data received from', participant?.identity, message);
-        
+
         if (message.type === 'comment') {
           setComments(prev => [...prev, {
             id: Date.now() + Math.random(),
@@ -1003,10 +1049,10 @@ const HostLiveStream = ({ onBack }) => {
           }]);
         } else if (message.type === 'heart') {
           const heartId = Date.now() + Math.random();
-          setHearts(prev => [...prev, { 
-            id: heartId, 
+          setHearts(prev => [...prev, {
+            id: heartId,
             x: Math.random() * 80 + 10,
-            from: participant?.identity 
+            from: participant?.identity
           }]);
           setTimeout(() => {
             setHearts(prev => prev.filter(h => h.id !== heartId));
@@ -1030,12 +1076,12 @@ const HostLiveStream = ({ onBack }) => {
 
       room.on(RoomEvent.LocalTrackPublished, (publication) => {
         console.log('Track published:', publication.source);
-        
+
         if (publication.source === Track.Source.Camera) {
           const localVideoTrack = publication.track;
           if (localVideoTrack && localVideoTrack.mediaStreamTrack) {
             const mediaStream = new MediaStream([localVideoTrack.mediaStreamTrack]);
-            
+
             if (videoRef.current) {
               videoRef.current.srcObject = mediaStream;
               videoRef.current.muted = true;
@@ -1073,7 +1119,7 @@ const HostLiveStream = ({ onBack }) => {
       setLiveKitRoom(room);
       setViewerCount(room.remoteParticipants.size);
       setIsLive(true);
-      
+
     } catch (err) {
       console.error('Error starting stream:', err);
       setError(err.message);
@@ -1125,7 +1171,7 @@ const HostLiveStream = ({ onBack }) => {
       setProducts([]);
       setOrders([]);
       setCoinBalance(0);
-      
+
       onBack();
     } catch (err) {
       console.error('Error ending stream:', err);
@@ -1253,9 +1299,9 @@ const HostLiveStream = ({ onBack }) => {
 
               <div className="bg-gray-800 rounded-lg p-4 mb-4">
                 <h3 className="font-semibold mb-4">Add Product/Ad</h3>
-                <select 
+                <select
                   value={newProduct.type}
-                  onChange={(e) => setNewProduct({...newProduct, type: e.target.value})}
+                  onChange={(e) => setNewProduct({ ...newProduct, type: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mb-2 focus:outline-none focus:border-blue-500"
                 >
                   <option value="product">Product</option>
@@ -1264,32 +1310,32 @@ const HostLiveStream = ({ onBack }) => {
                 <input
                   placeholder="Name"
                   value={newProduct.name}
-                  onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mb-2 focus:outline-none focus:border-blue-500"
                 />
                 <input
                   placeholder="Description"
                   value={newProduct.description}
-                  onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mb-2 focus:outline-none focus:border-blue-500"
                 />
                 <input
                   type="number"
                   placeholder="Price"
                   value={newProduct.price}
-                  onChange={(e) => setNewProduct({...newProduct, price: parseFloat(e.target.value)})}
+                  onChange={(e) => setNewProduct({ ...newProduct, price: parseFloat(e.target.value) })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mb-2 focus:outline-none focus:border-blue-500"
                 />
                 <input
                   placeholder="Image URL"
                   value={newProduct.imageUrl}
-                  onChange={(e) => setNewProduct({...newProduct, imageUrl: e.target.value})}
+                  onChange={(e) => setNewProduct({ ...newProduct, imageUrl: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mb-2 focus:outline-none focus:border-blue-500"
                 />
                 <input
                   placeholder="Link (for ad or product)"
                   value={newProduct.link}
-                  onChange={(e) => setNewProduct({...newProduct, link: e.target.value})}
+                  onChange={(e) => setNewProduct({ ...newProduct, link: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mb-2 focus:outline-none focus:border-blue-500"
                 />
                 <button
@@ -1307,7 +1353,7 @@ const HostLiveStream = ({ onBack }) => {
                       const data = await response.json();
                       if (response.ok) {
                         setProducts([...products, { ...data.product, index: products.length }]);
-                        setNewProduct({type: 'product', name: '', description: '', price: 0, imageUrl: '', link: ''});
+                        setNewProduct({ type: 'product', name: '', description: '', price: 0, imageUrl: '', link: '' });
                       } else {
                         setError(data.msg);
                       }
@@ -1319,7 +1365,7 @@ const HostLiveStream = ({ onBack }) => {
                 >
                   Add
                 </button>
-                
+
                 <div className="mt-4">
                   <h4 className="font-semibold mb-2">Added Items</h4>
                   {products.map((p, i) => (
@@ -1336,21 +1382,40 @@ const HostLiveStream = ({ onBack }) => {
                   <p className="text-gray-400">No orders yet</p>
                 ) : (
                   orders.map((o, i) => (
-                    <div key={i} className="bg-gray-700 rounded-lg p-2 mb-2">
-                      <span>{products[o.productIndex]?.name} - Quantity: {o.quantity} by {o.buyerUsername}</span>
+                    <div key={i} className="bg-gray-700 rounded-lg p-3 mb-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold text-green-400">
+                            {o.productName || products[o.productIndex]?.name || `Product #${o.productIndex}`}
+                          </p>
+                          <p className="text-sm text-gray-300">
+                            By: {o.buyerUsername || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Qty: {o.quantity || 1}
+                          </p>
+                        </div>
+                        <span className="text-xs bg-green-600 px-2 py-1 rounded">
+                          {o.status || 'completed'}
+                        </span>
+                      </div>
                     </div>
                   ))
                 )}
               </div>
 
               <div className="bg-gray-800 rounded-lg p-4 mt-4">
-                <h3 className="font-semibold mb-2">Stream Details</h3>
+                <h3 className="font-semibold mb-3">Stream Details</h3>
                 <div className="space-y-2 text-sm">
-                  <p className="text-gray-400">Stream ID: <span className="text-white font-mono text-xs">{streamData?.streamId}</span></p>
+                  <p className="text-gray-400">Stream ID: <span className="text-white font-mono text-xs break-all">{streamData?.streamId}</span></p>
                   <p className="text-gray-400">Status: <span className="text-green-400">● Live</span></p>
                   <p className="text-gray-400">Room: <span className="text-white">Connected</span></p>
                   <p className="text-gray-400">Active Viewers: <span className="text-white">{viewerCount}</span></p>
-                  <p className="text-gray-400">Coins Earned: <span className="text-yellow-400">{coinBalance}</span></p>
+                  <div className="mt-3 pt-3 border-t border-gray-700">
+                    <p className="text-lg font-bold">
+                      💰 Coins Earned: <span className="text-yellow-400">{coinBalance}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

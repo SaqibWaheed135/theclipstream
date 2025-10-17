@@ -28,7 +28,7 @@
 //   const [liveKitRoom, setLiveKitRoom] = useState(null);
 //   const [liveKitReady, setLiveKitReady] = useState(false);
 //   const [audioEnabled, setAudioEnabled] = useState(false);
-  
+
 //   const commentsEndRef = useRef(null);
 
 //   useEffect(() => {
@@ -64,7 +64,7 @@
 
 //       console.log('Stream fetched:', data);
 //       setStream(data);
-      
+
 //       if (data.viewerToken && data.roomUrl) {
 //         await connectToLiveKit(data.roomUrl, data.viewerToken);
 //       }
@@ -78,7 +78,7 @@
 //   const connectToLiveKit = async (roomUrl, viewerToken) => {
 //     try {
 //       console.log('Connecting to LiveKit as viewer...');
-      
+
 //       const room = new Room();
 //       await room.connect(roomUrl, viewerToken);
 //       setLiveKitRoom(room);
@@ -135,7 +135,7 @@
 
 //     if (track.kind === Track.Kind.Audio) {
 //       console.log('🎵 Audio track received from', participant.identity);
-      
+
 //       const existingAudio = document.querySelector(`audio[data-participant="${participant.identity}"]`);
 //       if (existingAudio) {
 //         existingAudio.remove();
@@ -159,7 +159,7 @@
 //         .catch((err) => {
 //           console.error('❌ Audio autoplay failed:', err);
 //           setError('👆 Click anywhere to enable audio');
-          
+
 //           const playOnInteraction = () => {
 //             audioEl.play()
 //               .then(() => {
@@ -171,7 +171,7 @@
 //               })
 //               .catch(e => console.error('Audio play failed after click:', e));
 //           };
-          
+
 //           document.addEventListener('click', playOnInteraction, { once: true });
 //           document.addEventListener('touchstart', playOnInteraction, { once: true });
 //         });
@@ -189,14 +189,14 @@
 //   const sendComment = (e) => {
 //     e.preventDefault();
 //     if (!comment.trim()) return;
-    
+
 //     const newComment = {
 //       id: Date.now(),
 //       username: 'You',
 //       text: comment,
 //       timestamp: new Date()
 //     };
-    
+
 //     setComments([...comments, newComment]);
 //     setComment('');
 //   };
@@ -240,7 +240,7 @@
 //           100% { transform: translateY(-100vh) scale(1.5); opacity: 0; }
 //         }
 //       `}</style>
-      
+
 //       {error && (
 //         <div className="fixed top-4 left-4 right-4 bg-yellow-500/90 text-black px-4 py-3 rounded-lg text-sm z-50 flex items-center gap-2">
 //           <span>⚠️ {error}</span>
@@ -313,7 +313,7 @@
 //                   </div>
 //                 ))
 //               )}
-              
+
 //               {hearts.map((heart) => (
 //                 <div
 //                   key={heart.id}
@@ -522,6 +522,8 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
   const [showCartModal, setShowCartModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [userCoinBalance, setUserCoinBalance] = useState(0);
+  const [socket, setSocket] = useState(null);
+
 
   const commentsEndRef = useRef(null);
 
@@ -530,37 +532,48 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
       setLiveKitReady(ready);
       if (ready && streamId) {
         fetchStream();
+        initializeSocket();
       }
     });
-
-    // Fetch user's coin balance
-    const fetchUserCoinBalance = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${API_URL}/live/user/coin-balance`, {
-          headers: {
-            ...(token && { 'Authorization': `Bearer ${token}` })
-          }
-        });
-        const data = await response.json();
-        if (response.ok) {
-          setUserCoinBalance(data.balance || 0);
-        } else {
-          console.error('Failed to fetch coin balance:', data.msg);
-        }
-      } catch (err) {
-        console.error('Error fetching coin balance:', err);
-      }
-    };
-    fetchUserCoinBalance();
 
     return () => {
       if (liveKitRoom) {
         liveKitRoom.disconnect();
       }
+      if (socket) {
+        socket.disconnect();
+      }
       document.querySelectorAll('audio[data-participant]').forEach(el => el.remove());
     };
   }, [streamId]);
+  const initializeSocket = () => {
+    const token = localStorage.getItem('token');
+    const newSocket = io(SOCKET_URL, {
+      auth: {
+        token: token
+      }
+    });
+
+    newSocket.on('connect', () => {
+      console.log('Viewer socket connected');
+
+      // Join the stream room
+      newSocket.emit('join-stream', {
+        streamId: streamId,
+        isStreamer: false
+      });
+    });
+
+    newSocket.on('error', (error) => {
+      console.error('Socket error:', error);
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      newSocket.disconnect();
+    };
+  };
 
   useEffect(() => {
     if (commentsEndRef.current) {
@@ -580,7 +593,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
       console.log('Stream fetched:', data);
       setStream(data);
       setProducts(data.products.map((p, index) => ({ ...p, index })) || []);
-      
+
       if (data.viewerToken && data.roomUrl) {
         await connectToLiveKit(data.roomUrl, data.viewerToken);
       }
@@ -594,7 +607,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
   const connectToLiveKit = async (roomUrl, viewerToken) => {
     try {
       console.log('Connecting to LiveKit as viewer...');
-      
+
       const room = new Room();
       await room.connect(roomUrl, viewerToken);
       setLiveKitRoom(room);
@@ -651,7 +664,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
 
     if (track.kind === Track.Kind.Audio) {
       console.log('🎵 Audio track received from', participant.identity);
-      
+
       const existingAudio = document.querySelector(`audio[data-participant="${participant.identity}"]`);
       if (existingAudio) {
         existingAudio.remove();
@@ -675,7 +688,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
         .catch((err) => {
           console.error('❌ Audio autoplay failed:', err);
           setError('👆 Click anywhere to enable audio');
-          
+
           const playOnInteraction = () => {
             audioEl.play()
               .then(() => {
@@ -687,7 +700,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
               })
               .catch(e => console.error('Audio play failed after click:', e));
           };
-          
+
           document.addEventListener('click', playOnInteraction, { once: true });
           document.addEventListener('touchstart', playOnInteraction, { once: true });
         });
@@ -695,6 +708,17 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
   };
 
   const sendHeart = () => {
+    if (socket && socket.connected) {
+      // Emit heart event to socket
+      socket.emit('send-heart', {
+        streamId: streamId
+      });
+      console.log('Heart sent via socket');
+    } else {
+      console.warn('Socket not connected, heart not sent');
+    }
+
+    // Local animation
     const heartId = Date.now() + Math.random();
     setHearts(prev => [...prev, { id: heartId, x: Math.random() * 80 + 10 }]);
     setTimeout(() => {
@@ -705,15 +729,29 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
   const sendComment = (e) => {
     e.preventDefault();
     if (!comment.trim()) return;
-    
+
+    if (socket && socket.connected) {
+      // Emit comment via socket to be stored in database and sent to all viewers
+      socket.emit('send-comment', {
+        streamId: streamId,
+        text: comment.trim()
+      });
+      console.log('Comment sent via socket:', comment);
+    } else {
+      console.warn('Socket not connected');
+      setError('Not connected to chat. Reconnecting...');
+      return;
+    }
+
+    // Add to local comments immediately
     const newComment = {
       id: Date.now(),
       username: 'You',
       text: comment,
       timestamp: new Date()
     };
-    
-    setComments([...comments, newComment]);
+
+    setComments(prev => [...prev, newComment]);
     setComment('');
   };
 
@@ -756,13 +794,12 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
           100% { transform: translateY(-100vh) scale(1.5); opacity: 0; }
         }
       `}</style>
-      
+
       {error && (
         <div className="fixed top-4 left-4 right-4 bg-yellow-500/90 text-black px-4 py-3 rounded-lg text-sm z-50 flex items-center gap-2">
           <span>⚠️ {error}</span>
         </div>
       )}
-
       {showCartModal && selectedProduct && (
         <CheckoutModal
           product={selectedProduct}
@@ -839,7 +876,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
                   </div>
                 ))
               )}
-              
+
               {hearts.map((heart) => (
                 <div
                   key={heart.id}
@@ -865,7 +902,7 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
                     <p className="text-gray-400 mb-2">{p.description}</p>
                     <p className="font-bold mb-2">${p.price} ({Math.ceil(p.price * 100)} coins)</p>
                     {p.type === 'product' ? (
-                      <button 
+                      <button
                         onClick={() => {
                           const token = localStorage.getItem('token');
                           if (!token) {
@@ -880,9 +917,9 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
                         Buy Now
                       </button>
                     ) : (
-                      <a 
-                        href={p.link} 
-                        target="_blank" 
+                      <a
+                        href={p.link}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-lg font-semibold block text-center"
                       >
@@ -917,6 +954,8 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
                 <h3 className="font-semibold flex items-center gap-2">
                   <MessageCircle className="w-5 h-5" />
                   Live Chat
+                  {socket?.connected && <span className="text-xs bg-green-600 px-2 py-1 rounded">Connected</span>}
+                  {!socket?.connected && <span className="text-xs bg-red-600 px-2 py-1 rounded">Disconnected</span>}
                 </h3>
               </div>
 
@@ -942,20 +981,23 @@ const ViewerLiveStream = ({ streamId, onBack }) => {
                     type="text"
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
-                    placeholder="Say something..."
+                    placeholder={socket?.connected ? "Say something..." : "Connecting..."}
                     maxLength={200}
-                    className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                    disabled={!socket?.connected}
+                    className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50"
                   />
                   <button
                     type="submit"
-                    className="bg-blue-600 hover:bg-blue-700 p-2 rounded-lg"
+                    disabled={!socket?.connected}
+                    className="bg-blue-600 hover:bg-blue-700 p-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Send className="w-4 h-4" />
                   </button>
                 </form>
                 <button
                   onClick={sendHeart}
-                  className="w-full bg-pink-600 hover:bg-pink-700 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  disabled={!socket?.connected}
+                  className="w-full bg-pink-600 hover:bg-pink-700 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Heart className="w-4 h-4" />
                   <span className="text-sm font-semibold">Send Heart</span>
